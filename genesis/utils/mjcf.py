@@ -370,8 +370,9 @@ def parse_constraints(mj, i_eq):
     info["data"] = eq_view.data
     info["id"] = eq_view.id
     info["name"] = eq_view.name
-    info["obj1id"] = eq_view.obj1id
-    info["obj2id"] = eq_view.obj2id
+    # TODO: set correct ID; recalculate any object to link
+    info["link1id"] = eq_view.obj1id
+    info["link2id"] = eq_view.obj2id
     info["solimp"] = eq_view.solimp
     info["solref"] = eq_view.solref
     info["type"] = eq_view.type
