@@ -21,9 +21,12 @@ class ConstraintSolver:
         self.sparse_solve = rigid_solver._options.sparse_solve
 
         # 4 constraints per contact and 1 constraints per joint limit (upper and lower, if not inf)
+        # FIXME: it seems that n_eq_dofs before build is not a final number of equality constraints,
+        # and it's not very clear, what value we should use here.
         self.len_constraints = (
             4 * self._collider._max_contact_pairs
             + np.logical_not(np.isinf(self._solver.dofs_info.limit.to_numpy())).sum()
+            + self._solver.n_eq_dofs
         )
         self.len_constraints_ = max(1, self.len_constraints)
 
@@ -226,6 +229,90 @@ class ConstraintSolver:
                         self.jac_relevant_dofs[n_con, 0, i_b] = i_d
 
                     self.efc_D[n_con, i_b] = 1 / ti.max(gs.EPS, diag)
+
+    @ti.func
+    def add_equality_constraints(self):
+        ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.PARTIAL)
+        for i_eq, i_b in ti.ndrange(self._solver.n_links, self._B):
+            eq_info = self._solver.eq_info[i_eq]
+            if eq_info.type == gs.EQ_TYPE.CONNECT:
+                anchor1, anchor2 = eq_info.data[0:3], eq_info.data[3:6]
+                link1_id, link2_id = eq_info.link1_id, eq_info.link2_id
+                p_b1 = self._solver.links_state[link1_id].pos
+                p_b2 = self._solver.links_state[link2_id].pos
+                R_b1 = gu.quat_to_R(self._solver.links_state[link1_id].quat)
+                R_b2 = gu.quat_to_R(self._solver.links_state[link2_id].quat)
+                # jac1 = self.
+
+                # pos1 = d.xmat[body1id] @ anchor1 + d.xpos[body1id]
+                # pos2 = d.xmat[body2id] @ anchor2 + d.xpos[body2id]
+                pos1 = R_b1 @ anchor1 + p_b1
+                pos2 = R_b2 @ anchor2 + p_b2
+
+                # error is difference in global positions
+                pos = pos1 - pos2
+
+                # compute Jacobian difference (opposite of contact: 0 - 1)
+                # jacp1, _ = support.jac(m, d, pos1, body1id)
+                # jacp2, _ = support.jac(m, d, pos2, body2id)
+                j = (jacp1 - jacp2).T
+                pos_imp = math.norm(pos)
+                invweight = m.body_invweight0[body1id, 0] + m.body_invweight0[body2id, 0]
+                zero = jp.zeros_like(pos)
+
+                efc = _row(j, pos, pos_imp, invweight, solref, solimp, zero, zero)
+                return jax.tree_util.tree_map(lambda x: x * active, efc)
+
+                is_site = m.eq_objtype == ObjType.SITE
+                body1id = np.copy(m.eq_obj1id)
+                body2id = np.copy(m.eq_obj2id)
+
+                if m.nsite:
+                    body1id[is_site] = m.site_bodyid[m.eq_obj1id[is_site]]
+                    body2id[is_site] = m.site_bodyid[m.eq_obj2id[is_site]]
+                    pass
+
+            if eq_info.type == gs.EQ_TYPE.WELD:
+                pass
+
+            if eq_info.type == gs.EQ_TYPE.JOINT:
+                pass
+
+    # def _kbi(
+    #     solref,
+    #     solimp,
+    #     pos: jax.Array,
+    # ) -> Tuple[jax.Array, jax.Array, jax.Array]:
+    #     """Calculates stiffness, damping, and impedance of a constraint."""
+    #     timeconst, dampratio = solref
+
+    #     if not m.opt.disableflags & DisableBit.REFSAFE:
+    #         timeconst = jp.maximum(timeconst, 2 * m.opt.timestep)
+
+    #     dmin, dmax, width, mid, power = solimp
+
+    #     dmin = jp.clip(dmin, mujoco.mjMINIMP, mujoco.mjMAXIMP)
+    #     dmax = jp.clip(dmax, mujoco.mjMINIMP, mujoco.mjMAXIMP)
+    #     width = jp.maximum(mujoco.mjMINVAL, width)
+    #     mid = jp.clip(mid, mujoco.mjMINIMP, mujoco.mjMAXIMP)
+    #     power = jp.maximum(1, power)
+
+    #     # See https://mujoco.readthedocs.io/en/latest/modeling.html#solver-parameters
+    #     k = 1 / (dmax * dmax * timeconst * timeconst * dampratio * dampratio)
+    #     b = 2 / (dmax * timeconst)
+    #     # TODO(robotics-simulation): check various solparam settings in model gen test
+    #     k = jp.where(solref[0] <= 0, -solref[0] / (dmax * dmax), k)
+    #     b = jp.where(solref[1] <= 0, -solref[1] / dmax, b)
+
+    #     imp_x = jp.abs(pos) / width
+    #     imp_a = (1.0 / jp.power(mid, power - 1)) * jp.power(imp_x, power)
+    #     imp_b = 1 - (1.0 / jp.power(1 - mid, power - 1)) * jp.power(1 - imp_x, power)
+    #     imp_y = jp.where(imp_x < mid, imp_a, imp_b)
+    #     imp = dmin + imp_y * (dmax - dmin)
+    #     imp = jp.clip(imp, dmin, dmax)
+    #     imp = jp.where(imp_x > 1.0, dmax, imp)
+
+    #     return k, b, imp  # corresponds to K, B, I of efc_KBIP
 
     @ti.func
     def _func_nt_hessian_incremental(self, i_b):
