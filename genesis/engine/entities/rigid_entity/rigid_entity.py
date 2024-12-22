@@ -323,6 +323,7 @@ class RigidEntity(Entity):
         mj = mju.parse_mjcf(morph.file)
         n_geoms = mj.ngeom
         n_links = mj.nbody - 1  # link 0 in mj is world
+        n_eqs = mj.neq
 
         links_g_info = [list() for _ in range(n_links)]
         world_g_info = []
@@ -346,6 +347,7 @@ class RigidEntity(Entity):
 
         l_infos = []
         j_infos = []
+        eq_infos = []
 
         q_offset, dof_offset = 0, 0
 
@@ -376,6 +378,13 @@ class RigidEntity(Entity):
                     j_info["init_qpos"] = np.concatenate([l_info["pos"], l_info["quat"]])
 
             self._add_by_info(l_info, j_info, links_g_info[i_l], morph, surface)
+
+        for i_eq in range(n_eqs):
+            eq_info = mju.parse_constraints(mj, i_eq)
+            eq_infos.append(eq_info)
+
+            # TODO: we should propagate this information to the rigid entity fields
+            print(eq_info)
 
         if world_g_info:
             l_world_info, j_world_info = mju.parse_link(mj, 0, q_offset, dof_offset, morph.scale)

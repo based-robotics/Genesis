@@ -7,3 +7,6 @@
 [submodule "genesis/ext/ParticleMesher"]
 	path = genesis/ext/ParticleMesher
 	url = https://github.com/ACMLCZH/ParticleMesher
+[submodule "examples/closed-kin-chain/mujoco_menagerie"]
+	path = examples/closed-kin-chain/mujoco_menagerie
+	url = https://github.com/google-deepmind/mujoco_menagerie.git
