@@ -51,6 +51,12 @@ class CTRL_MODE(IntEnum):
     POSITION = 2
 
 
+class EQ_TYPE(IntEnum):
+    CONNECT = 0
+    WELD = 1
+    JOINT = 2
+
+
 ######### User accessible constants do not capitalize #########
 # rigid solver intergrator
 class integrator(IntEnum):
