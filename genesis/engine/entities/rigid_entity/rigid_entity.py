@@ -14,6 +14,7 @@ from genesis.utils.misc import tensor_to_array
 from ..base_entity import Entity
 from .rigid_joint import RigidJoint
 from .rigid_link import RigidLink
+from .rigid_equality import RigidEquality
 
 
 @ti.data_oriented
@@ -70,6 +71,7 @@ class RigidEntity(Entity):
     def _load_model(self):
         self._links = gs.List()
         self._joints = gs.List()
+        self._equalities = gs.List()
 
         if isinstance(self._morph, gs.morphs.Mesh):
             self._load_mesh(self._morph, self._surface)
@@ -383,8 +385,17 @@ class RigidEntity(Entity):
             eq_info = mju.parse_constraints(mj, i_eq)
             eq_infos.append(eq_info)
 
-            # TODO: we should propagate this information to the rigid entity fields
-            print(eq_info)
+            self._add_equality(
+                eq_info["active0"],
+                eq_info["data"],
+                eq_info["id"],
+                eq_info["name"],
+                eq_info["obj1id"],
+                eq_info["obj2id"],
+                eq_info["solimp"],
+                eq_info["solref"],
+                eq_info["type"],
+            )
 
         if world_g_info:
             l_world_info, j_world_info = mju.parse_link(mj, 0, q_offset, dof_offset, morph.scale)
@@ -620,6 +631,34 @@ class RigidEntity(Entity):
         )
         self._joints.append(joint)
         return joint
+
+    def _add_equality(
+        self,
+        active0,
+        data,
+        id,
+        name,
+        obj1id,
+        obj2id,
+        solimp,
+        solref,
+        _type,
+    ):
+        equality = RigidEquality(
+            entity=self,
+            active0=active0,
+            data=data,
+            id=id,
+            name=name,
+            obj1id=obj1id,
+            obj2id=obj2id,
+            solimp=solimp,
+            solref=solref,
+            _type=_type,
+        )
+
+        self._equalities.append(equality)
+        return equality
 
     # ------------------------------------------------------------------------------------
     # --------------------------------- Jacobian & IK ------------------------------------

@@ -98,6 +98,14 @@ class ConstraintSolver:
             self.n_constraints[b] = 0
 
     @ti.kernel
+    def add_equality_constraint(self):
+        # TODO:
+
+        # self.rigid_
+
+        pass
+
+    @ti.kernel
     def add_collision_constraints(self):
         ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.ALL)
         for i_b in range(self._B):
@@ -408,6 +416,9 @@ class ConstraintSolver:
 
         if self._solver._enable_joint_limit:
             self.add_joint_limit_constraints()
+
+        # TODO: add equality constraints
+        # pure copy from rigid entity to the data of this class
 
         if self._solver._enable_collision or self._solver._enable_joint_limit:
             self.resolve()
@@ -830,6 +841,7 @@ class ConstraintSolver:
 
     @ti.func
     def _func_update_constraint(self, i_b, qacc, Ma, cost):
+        # _update_constraint from mjx
         self.prev_cost[i_b] = cost[i_b]
         cost[i_b] = gs.ti_float(0.0)
         self.gauss[i_b] = gs.ti_float(0.0)

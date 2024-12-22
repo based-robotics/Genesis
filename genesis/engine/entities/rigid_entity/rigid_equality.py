@@ -7,18 +7,36 @@ from genesis.repr_base import RBC
 
 
 @ti.data_oriented
-class RigidEqConnect(RBC):
+class RigidEquality(RBC):
     """
-    A Rigid Connect defines a 3D connection between two bodies at a point (ball joint)
-    """
-
-@ti.data_oriented
-class RigidEqJoint(RBC):
-    """
-    A Rigid Joint Equality couples the values of two scalar joints with cubic
+    A Rigid Equality
     """
 
-# Other equality constraints from mjcf
-# weld
-# tendon
-# flex
+    def __init__(
+        self,
+        entity,
+        active0,
+        data,
+        id,
+        name,
+        obj1id,
+        obj2id,
+        solimp,
+        solref,
+        _type,
+    ):
+        self._uid = gs.UID()
+        self._entity = entity
+        self._solver = entity.solver
+
+        self._active0 = active0
+        self._data = data
+        self._id = id
+        self._name = name
+        self._obj1id = obj1id
+        self._obj2id = obj2id
+        self._solimp = solimp
+        self._solref = solref
+        self._type = _type
+
+    # TODO: here should go all functions which compute some dampings and forces and something else
