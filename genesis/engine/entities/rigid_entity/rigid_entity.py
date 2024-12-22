@@ -2313,12 +2313,22 @@ class RigidEntity(Entity):
         return len(self._joints)
 
     @property
+    def n_eqs(self):
+        """The number of equality constraints in the entity."""
+        return len(self._equalities)
+
+    @property
     def n_dofs(self):
         """The number of degrees of freedom (DOFs) of the entity."""
         if self._is_built:
             return self._n_dofs
         else:
             return sum([joint.n_dofs for joint in self._joints])
+
+    @property
+    def n_eq_dofs(self):
+        """The number of degrees of freedom (DOFs) reduced by equality constraints."""
+        return sum([eq.dim for eq in self._equalities])
 
     @property
     def n_geoms(self):

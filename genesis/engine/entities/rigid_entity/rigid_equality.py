@@ -1,3 +1,4 @@
+import numpy as np
 import taichi as ti
 import torch
 
@@ -24,7 +25,7 @@ class RigidEquality(RBC):
         link2id,
         solimp,
         solref,
-        _type,
+        type,
     ):
         self._uid = gs.UID()
         self._entity = entity
@@ -38,7 +39,7 @@ class RigidEquality(RBC):
         self._link2id = link2id
         self._solimp = solimp
         self._solref = solref
-        self._type = EQ_TYPE(_type)
+        self._type = EQ_TYPE(type)
 
     # TODO: here should go all functions which compute some dampings and forces and something else
 
@@ -50,7 +51,14 @@ class RigidEquality(RBC):
     # ----------------------------------- properties -------------------------------------
     # ------------------------------------------------------------------------------------
 
-    @property
+    @gs.assert_built
+    def link1_jac(self, envs_idx=None) -> np.ndarray:
+        return self._solver.get_links_jac([self._link1id], envs_idx)
+
+    @gs.assert_built
+    def link2_jac(self, envs_idx=None) -> np.ndarray:
+        return self._solver.get_links_jac([self._link1id], envs_idx)
+
     def dim(self) -> int:
         if self._type == EQ_TYPE.CONNECT:
             return 6

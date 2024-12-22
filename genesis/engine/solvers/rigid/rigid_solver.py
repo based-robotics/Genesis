@@ -527,7 +527,17 @@ class RigidSolver(Solver):
             solimp=gs.ti_float,
             data=ti.types.vector(11, gs.ti_float),  # FIXME: 11 is a magic number
         )
+        struct_eq_state = ti.types.struct(
+            link1_jac=ti.types.matrix(6, self.n_dofs, dtype=gs.ti_float),
+            link2_jac=ti.types.matrix(6, self.n_dofs, dtype=gs.ti_float),
+        )
+
         self.eqs_info = struct_eq_info.field(shape=self.n_eqs, needs_grad=False, layout=ti.Layout.SOA)
+        self.eqs_state = struct_eq_state.field(
+            shape=self._batch_shape(self.n_links),
+            needs_grad=False,
+            layout=ti.Layout.SOA,
+        )
         self._kernel_init_eq_fields(
             eq_type=np.array([eq.type.value for eq in self.eqs], dtype=gs.np_int),
             eq_link1_id=np.array([eq.obj1_id for eq in self.eqs], dtype=gs.np_int),
@@ -535,6 +545,8 @@ class RigidSolver(Solver):
             eq_solref=np.array([eq.solref for eq in self.eqs], dtype=gs.np_float),
             eq_solimp=np.array([eq.solimp for eq in self.eqs], dtype=gs.np_float),
             eq_data=np.array([eq.data for eq in self.eqs], dtype=gs.np_float),
+            link1_jac=np.array([eq.link1_jac for eq in self.eqs], dtype=gs.np_float),
+            link2_jac=np.array([eq.link2_jac for eq in self.eqs], dtype=gs.np_float),
         )
 
     @ti.kernel
@@ -546,6 +558,8 @@ class RigidSolver(Solver):
         eq_solref: ti.types.ndarray(),
         eq_solimp: ti.types.ndarray(),
         eq_data: ti.types.ndarray(),
+        eq_link1_jac: ti.types.ndarray(),
+        eq_link2_jac: ti.types.ndarray(),
     ):
         ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.PARTIAL)
         for i in range(self.n_eqs):
@@ -557,6 +571,12 @@ class RigidSolver(Solver):
 
             for j in ti.static(range(11)):  # FIXME: magic number
                 self.links_info[i].data[j] = eq_data[i, j]
+
+        ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.PARTIAL)
+        for i, d, b in ti.ndrange(self.n_eqs, self.n_dofs, self._B):
+            for jrow_idx in ti.static(range(6)):
+                self.eqs_info[i, b].link1_jac[jrow_idx, d] = eq_link1_jac[b, i, jrow_idx, d]
+                self.eqs_info[i, b].link2_jac[jrow_idx, d] = eq_link2_jac[b, i, jrow_idx, d]
 
     def _init_vert_fields(self):
         # collisioin geom
@@ -2887,6 +2907,52 @@ class RigidSolver(Solver):
 
             return tensor, inputs_idx
 
+    def _validate_ND_io_variables(
+        self, tensor, inputs_idx, tensor_size, envs_idx=None, batched=True, idx_name="links_idx"
+    ):
+        inputs_idx = torch.as_tensor(inputs_idx, dtype=gs.tc_int, device=gs.device).contiguous()
+        if inputs_idx.ndim != 1:
+            gs.raise_exception(f"Expecting 1D tensor for `{idx_name}`.")
+
+        if tensor is not None:
+            tensor = torch.as_tensor(tensor, dtype=gs.tc_float, device=gs.device).contiguous()
+            if tensor.shape[-2] != len(inputs_idx):
+                gs.raise_exception(f"Second last dimension of the input tensor does not match length of `{idx_name}`.")
+            if tensor.shape[-1] != tensor_size:
+                gs.raise_exception(f"Last dimension of the input tensor must be {tensor_size}.")
+
+        else:
+            if batched and self.n_envs > 0:
+                tensor = torch.empty(
+                    self._batch_shape((len(inputs_idx), *tensor_size), True), dtype=gs.tc_float, device=gs.device
+                )
+            else:
+                tensor = torch.empty((len(inputs_idx), *tensor_size), dtype=gs.tc_float, device=gs.device)
+
+        if batched:
+            envs_idx = self._get_envs_idx(envs_idx)
+
+            if self.n_envs == 0:
+                if tensor.ndim == len(tensor_size):
+                    tensor = tensor[None, :]
+                else:
+                    gs.raise_exception(
+                        f"Invalid input shape: {tensor.shape}. Expecting a ND tensor for non-parallelized scene."
+                    )
+
+            else:
+                if tensor.ndim == len(tensor_size) + 1:
+                    if tensor.shape[0] != len(envs_idx):
+                        gs.raise_exception(
+                            f"Invalid input shape: {tensor.shape}. First dimension of the input tensor does not match length of `envs_idx` (or `scene.n_envs` if `envs_idx` is None)."
+                        )
+                else:
+                    gs.raise_exception(
+                        f"Invalid input shape: {tensor.shape}. Expecting a (N+1)D tensor for scene with parallelized envs."
+                    )
+
+            return tensor, inputs_idx, envs_idx
+
     def _get_qs_idx(self, qs_idx_local=None):
         return self._get_qs_idx_local(qs_idx_local) + self._q_start
 
@@ -3173,6 +3239,81 @@ class RigidSolver(Solver):
         for i_l_, i_b_ in ti.ndrange(links_idx.shape[0], envs_idx.shape[0]):
             for i in ti.static(range(3)):
                 tensor[i_b_, i_l_, i] = self.links_state[links_idx[i_l_], envs_idx[i_b_]].pos[i]
+
+    def get_links_jac(self, links_idx, envs_idx=None):
+        tensor, links_idx, envs_idx = self._validate_ND_io_variables(
+            None, links_idx, (6, self.n_dofs), envs_idx, idx_name="links_idx"
+        )
+
+        self._kernel_get_links_jac(tensor, links_idx, envs_idx)
+
+        if self.n_envs == 0:
+            tensor = tensor.squeeze(0)
+        return tensor
+
+    @ti.kernel
+    def _kernel_get_links_jac(
+        self,
+        tensor: ti.types.ndarray(),
+        links_idx: ti.types.ndarray(),
+        envs_idx: ti.types.ndarray(),
+    ):
+        ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.PARTIAL)
+        for i_l_, i_b_ in ti.ndrange(links_idx.shape[0], envs_idx.shape[0]):
+            i_l = links_idx[i_l_]
+            tgt_link_pos = self.links_state[i_l, i_b_].pos
+            while i_l > -1:
+                l_info = self._solver.links_info[i_l]
+                l_state = self._solver.links_state[i_l, i_b_]
+
+                if l_info.joint_type == gs.JOINT_TYPE.FIXED:
+                    pass
+
+                elif l_info.joint_type == gs.JOINT_TYPE.REVOLUTE:
+                    i_d = l_info.dof_start
+                    i_d_jac = i_d - self._dof_start
+                    rotation = gu.ti_transform_by_quat(self._solver.dofs_info[i_d].motion_ang, l_state.quat)
+                    translation = rotation.cross(tgt_link_pos - l_state.pos)
+
+                    self._jacobian[0, i_d_jac, i_b_] = translation[0]
+                    self._jacobian[1, i_d_jac, i_b_] = translation[1]
+                    self._jacobian[2, i_d_jac, i_b_] = translation[2]
+                    self._jacobian[3, i_d_jac, i_b_] = rotation[0]
+                    self._jacobian[4, i_d_jac, i_b_] = rotation[1]
+                    self._jacobian[5, i_d_jac, i_b_] = rotation[2]
+
+                elif l_info.joint_type == gs.JOINT_TYPE.PRISMATIC:
+                    i_d = l_info.dof_start
+                    i_d_jac = i_d - self._dof_start
+                    translation = gu.ti_transform_by_quat(self._solver.dofs_info[i_d].motion_vel, l_state.quat)
+
+                    self._jacobian[0, i_d_jac, i_b_] = translation[0]
+                    self._jacobian[1, i_d_jac, i_b_] = translation[1]
+                    self._jacobian[2, i_d_jac, i_b_] = translation[2]
+
+                elif l_info.joint_type == gs.JOINT_TYPE.FREE:
+                    # translation
+                    for i_d_ in range(3):
+                        i_d = l_info.dof_start + i_d_
+                        i_d_jac = i_d - self._dof_start
+
+                        self._jacobian[i_d_, i_d_jac, i_b_] = 1.0
+
+                    # rotation
+                    for i_d_ in range(3):
+                        i_d = l_info.dof_start + i_d_ + 3
+                        i_d_jac = i_d - self._dof_start
+                        rotation = self._solver.dofs_info[i_d].motion_ang
+                        translation = rotation.cross(tgt_link_pos - l_state.pos)
+
+                        self._jacobian[0, i_d_jac, i_b_] = translation[0]
+                        self._jacobian[1, i_d_jac, i_b_] = translation[1]
+                        self._jacobian[2, i_d_jac, i_b_] = translation[2]
+                        self._jacobian[3, i_d_jac, i_b_] = rotation[0]
+                        self._jacobian[4, i_d_jac, i_b_] = rotation[1]
+                        self._jacobian[5, i_d_jac, i_b_] = rotation[2]
+
+                i_l = l_info.parent_idx
 
     def get_links_quat(self, links_idx, envs_idx=None):
         tensor, links_idx, envs_idx = self._validate_2D_io_variables(None, links_idx, 4, envs_idx, idx_name="links_idx")
