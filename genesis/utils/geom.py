@@ -193,7 +193,7 @@ def ti_quat_to_T(quat):
 @ti.func
 def ti_transform_motion_by_trans_quat(m_ang, m_vel, trans, quat):
     quat_t = ti_inv_quat(quat)
-    ang = ti_transform_by_quat(m_ang, quat_t)
+    quat.ang = ti_transform_by_quat(m_ang, quat_t)
     vel = ti_transform_by_quat(m_vel - trans.cross(m_ang), quat_t)
     return ang, vel
 

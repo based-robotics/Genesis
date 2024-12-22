@@ -235,17 +235,16 @@ class ConstraintSolver:
         ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.PARTIAL)
         for i_eq, i_b in ti.ndrange(self._solver.n_links, self._B):
             eq_info = self._solver.eq_info[i_eq]
+            jac_b1 = self._solver.eqs_state[i_eq, i_b].jac_body1
+            jac_b2 = self._solver.eqs_state[i_eq, i_b].jac_body2
             if eq_info.type == gs.EQ_TYPE.CONNECT:
                 anchor1, anchor2 = eq_info.data[0:3], eq_info.data[3:6]
                 link1_id, link2_id = eq_info.link1_id, eq_info.link2_id
-                p_b1 = self._solver.links_state[link1_id].pos
-                p_b2 = self._solver.links_state[link2_id].pos
-                R_b1 = gu.quat_to_R(self._solver.links_state[link1_id].quat)
-                R_b2 = gu.quat_to_R(self._solver.links_state[link2_id].quat)
-                # jac1 = self.
+                p_b1 = self._solver.links_state[link1_id, i_b].pos
+                p_b2 = self._solver.links_state[link2_id, i_b].pos
+                R_b1 = gu.quat_to_R(self._solver.links_state[link1_id, i_b].quat)
+                R_b2 = gu.quat_to_R(self._solver.links_state[link2_id, i_b].quat)
 
-                # pos1 = d.xmat[body1id] @ anchor1 + d.xpos[body1id]
-                # pos2 = d.xmat[body2id] @ anchor2 + d.xpos[body2id]
                 pos1 = R_b1 @ anchor1 + p_b1
                 pos2 = R_b2 @ anchor2 + p_b2
 
@@ -253,66 +252,83 @@ class ConstraintSolver:
                 pos = pos1 - pos2
 
                 # compute Jacobian difference (opposite of contact: 0 - 1)
-                # jacp1, _ = support.jac(m, d, pos1, body1id)
-                # jacp2, _ = support.jac(m, d, pos2, body2id)
+                jacp1 = jac_b1[:3]
+                jacp2 = jac_b2[:3]
                 j = (jacp1 - jacp2).T
-                pos_imp = math.norm(pos)
-                invweight = m.body_invweight0[body1id, 0] + m.body_invweight0[body2id, 0]
-                zero = jp.zeros_like(pos)
+                pos_imp = gs.normalize(pos)
+                invweight = (
+                    self._solver.links_info[link1_id].invweight[0] + self._solver.links_info[link1_id].invweight[0]
+                )
 
-                efc = _row(j, pos, pos_imp, invweight, solref, solimp, zero, zero)
-                return jax.tree_util.tree_map(lambda x: x * active, efc)
-
-                is_site = m.eq_objtype == ObjType.SITE
-                body1id = np.copy(m.eq_obj1id)
-                body2id = np.copy(m.eq_obj2id)
-
-                if m.nsite:
-                    body1id[is_site] = m.site_bodyid[m.eq_obj1id[is_site]]
-                    body2id[is_site] = m.site_bodyid[m.eq_obj2id[is_site]]
-                    pass
+                # Writing constraints to the data
+                # ...
 
             if eq_info.type == gs.EQ_TYPE.WELD:
-                pass
+                anchor1, anchor2 = eq_info.data[0:3], eq_info.data[3:6]
+                relpose, torquescale = eq_info.data[6:10], eq_info.data[10]
+
+                # error is difference in global position and orientation
+                p_b1 = self._solver.links_state[link1_id, i_b].pos
+                p_b2 = self._solver.links_state[link2_id, i_b].pos
+                R_b1 = gu.quat_to_R(self._solver.links_state[link1_id, i_b].quat)
+                R_b2 = gu.quat_to_R(self._solver.links_state[link2_id, i_b].quat)
+
+                pos1 = R_b1 @ anchor1 + p_b1
+                pos2 = R_b2 @ anchor2 + p_b2
+
+                cpos = pos1 - pos2
+
+                # compute Jacobian difference (opposite of contact: 0 - 1)
+                jacp1, jacr1 = jac_b1[:3], jac_b1[3:]
+                jacp2, jacr2 = jac_b2[:3], jac_b2[3:]
+                jacdifp = jacp1 - jacp2
+                jacdifr = (jacr1 - jacr2) * torquescale
+
+                # compute orientation error: neg(q1) * q0 * relpose (axis components only)
+                # The order is reversed compared to multiplication
+                quat = gu.transform_quat_by_quat(relpose, self._solver.links_state[link1_id, i_b].quat)
+                quat1 = gu.inv_quat(self._solver.links_state[link2_id, i_b].quat)
+
+                crot = torquescale * gu.transform_quat_by_quat(quat, quat1)[1:]  # copy axis components
+
+                pos = ti.Vector(
+                    [
+                        cpos[0],
+                        cpos[1],
+                        cpos[2],
+                        crot[0],
+                        crot[1],
+                        crot[2],
+                    ]
+                )
+
+                # Writing constraints to the data
+                # correct rotation Jacobian: 0.5 * neg(q1) * (jac0-jac1) * q0 * relpose
+                # jac_fn = lambda j: math.quat_mul(math.quat_mul_axis(quat1, j), quat)[1:]
+                # jacdifr = 0.5 * jax.vmap(jac_fn)(jacdifr)
+                # j = jp.concatenate((jacdifp.T, jacdifr.T))
+                # pos_imp = math.norm(pos)
+                # invweight = m.body_invweight0[body1id] + m.body_invweight0[body2id]
+                # invweight = jp.repeat(invweight, 3, axis=0)
 
             if eq_info.type == gs.EQ_TYPE.JOINT:
-                pass
+                # TODO: rename link to smth more neutral, f.e. obj
+                # TODO: the joints in genesis are strictly attached to the links. How exactly?
+                # TODO: what about world joint?
+                l1_info, l2_info = self._solver.links_info[link1_id], self._solver.links_info[link2_id]
+                q0_id, q1_id = l1_info.q_start, l2_info.q_start
+                pos1, pos2 = self._solver.qpos[q0_id, i_b], self._solver.qpos[q1_id, i_b]
+                ref1, ref2 = self._solver.init_q[q0_id], self._solver.init_q[q0_id]
+                dif = pos2 - ref2
+                dif_power = ti.Vector([dif[i] ** i for i in ti.static(range(5))])  # jp.power(dif, jp.arange(0, 5))
+                pos = pos1 - ref1 - sum(eq_info.data[:5] * dif_power)
+                deriv = sum(eq_info.data[1:5] * dif_power[:4] * ti.Vector(range(1, 5)))
 
-    # def _kbi(
-    #     solref,
-    #     solimp,
-    #     pos: jax.Array,
-    # ) -> Tuple[jax.Array, jax.Array, jax.Array]:
-    #     """Calculates stiffness, damping, and impedance of a constraint."""
-    #     timeconst, dampratio = solref
-
-    #     if not m.opt.disableflags & DisableBit.REFSAFE:
-    #         timeconst = jp.maximum(timeconst, 2 * m.opt.timestep)
-
-    #     dmin, dmax, width, mid, power = solimp
-
-    #     dmin = jp.clip(dmin, mujoco.mjMINIMP, mujoco.mjMAXIMP)
-    #     dmax = jp.clip(dmax, mujoco.mjMINIMP, mujoco.mjMAXIMP)
-    #     width = jp.maximum(mujoco.mjMINVAL, width)
-    #     mid = jp.clip(mid, mujoco.mjMINIMP, mujoco.mjMAXIMP)
-    #     power = jp.maximum(1, power)
-
-    #     # See https://mujoco.readthedocs.io/en/latest/modeling.html#solver-parameters
-    #     k = 1 / (dmax * dmax * timeconst * timeconst * dampratio * dampratio)
-    #     b = 2 / (dmax * timeconst)
-    #     # TODO(robotics-simulation): check various solparam settings in model gen test
-    #     k = jp.where(solref[0] <= 0, -solref[0] / (dmax * dmax), k)
-    #     b = jp.where(solref[1] <= 0, -solref[1] / dmax, b)
-
-    #     imp_x = jp.abs(pos) / width
-    #     imp_a = (1.0 / jp.power(mid, power - 1)) * jp.power(imp_x, power)
-    #     imp_b = 1 - (1.0 / jp.power(1 - mid, power - 1)) * jp.power(1 - imp_x, power)
-    #     imp_y = jp.where(imp_x < mid, imp_a, imp_b)
-    #     imp = dmin + imp_y * (dmax - dmin)
-    #     imp = jp.clip(imp, dmin, dmax)
-    #     imp = jp.where(imp_x > 1.0, dmax, imp)
-
-    #     return k, b, imp  # corresponds to K, B, I of efc_KBIP
+                # Writing constraints to the data
+                # j = jp.zeros((m.nv)).at[dofadr2].set(-deriv).at[dofadr1].set(1.0)
+                # invweight = m.dof_invweight0[dofadr1]
+                # invweight += m.dof_invweight0[dofadr2] * (obj2id > -1)
+                # zero = jp.zeros_like(pos)
 
     @ti.func
     def _func_nt_hessian_incremental(self, i_b):
