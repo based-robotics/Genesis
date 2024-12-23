@@ -45,7 +45,7 @@ def main():
 
     ########################## build ##########################
     scene.build()
-    for i in range(1000):
+    for i in range(100000):
         scene.step()
 
 

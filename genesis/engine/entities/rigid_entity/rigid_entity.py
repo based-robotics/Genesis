@@ -180,21 +180,21 @@ class RigidEntity(Entity):
         )
 
         # Add equality constraint for fixed joints
-        # if morph.fixed:
-        self._add_equality(
-            name=f"{link_name_prefix}_fixed",
-            type=gs.EQ_TYPE.CONNECT,
-            data=np.concatenate([
-                np.zeros(3),  # anchor1 
-                np.zeros(3),  # anchor2
-                np.array([1,0,0,0]),  # relpose quat
-                np.array([1.0])  # torquescale
-            ]),
-            link1_id=link.idx,
-            link2_id=link.idx,
-            sol_params=gu.default_solver_params(n=6),  # 6-DOF constraint
-            active0=True
-        )
+        if morph.fixed:
+            self._add_equality(
+                name=f"{link_name_prefix}_fixed",
+                type=gs.EQ_TYPE.WELD,
+                data=np.concatenate([
+                    np.zeros(3),  # anchor1 
+                    np.zeros(3),  # anchor2
+                    np.array([1,0,0,0]),  # relpose quat
+                    np.array([1.0])  # torquescale
+                ]),
+                link1_id=link.idx,
+                link2_id=link.idx,
+                sol_params=gu.default_solver_params(n=6),  # 6-DOF constraint
+                active0=True
+            )
 
         # TODO: add equality constraints
 
@@ -383,17 +383,19 @@ class RigidEntity(Entity):
 
         for i_l in range(n_links):
             l_info, j_info = mju.parse_link(mj, i_l + 1, q_offset, dof_offset, morph.scale)
-
             l_infos.append(l_info)
             j_infos.append(j_info)
-
             q_offset += j_info["n_qs"]
             dof_offset += j_info["n_dofs"]
 
         # Parse equality constraints from MuJoCo model
         for i_eq in range(n_eqs):
             eq_info = mju.parse_constraints(mj, i_eq)
-            eq_infos.append(eq_info)
+            if eq_info is not None:  # Make sure we got valid constraint info
+                # Add default solver parameters if not present
+                if "sol_params" not in eq_info:
+                    eq_info["sol_params"] = gu.default_solver_params(n=6)  # 6-DOF constraint by default
+                eq_infos.append(eq_info)
 
         l_infos, j_infos, links_g_info = uu._order_links(l_infos, j_infos, links_g_info)
         
@@ -416,19 +418,16 @@ class RigidEntity(Entity):
 
             self._add_by_info(l_info, j_info, links_g_info[i_l], morph, surface)
 
-        for i_eq in range(n_eqs):
-            eq_info = mju.parse_constraints(mj, i_eq)
-            eq_infos.append(eq_info)
-
+        # Add equality constraints
+        for eq_info in eq_infos:
             self._add_equality(
-                eq_info["active0"],
-                eq_info["data"],
-                eq_info["id"],
-                eq_info["name"],
-                eq_info["link1id"],
-                eq_info["link2id"],
-                eq_info["sol_params"],
-                eq_info["type"],
+                name=eq_info["name"],
+                type=eq_info["type"],
+                data=eq_info["data"],
+                link1_id=eq_info["link1id"],
+                link2_id=eq_info["link2id"],
+                sol_params=eq_info["sol_params"],
+                active0=eq_info.get("active0", True)  # Default to active if not specified
             )
 
         if world_g_info:
