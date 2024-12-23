@@ -232,128 +232,130 @@ class ConstraintSolver:
 
     @ti.func
     def add_equality_constraints(self):
-        pass
-        # ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.PARTIAL)
-        # for i_eq, i_b in ti.ndrange(self._solver.n_links, self._B):
-        #     eq_info = self._solver.eq_info[i_eq]
-        #     jac_b1 = self._solver.eqs_state[i_eq, i_b].jac_body1
-        #     jac_b2 = self._solver.eqs_state[i_eq, i_b].jac_body2
-        #     if eq_info.type == gs.EQ_TYPE.CONNECT:
-        #         anchor1, anchor2 = eq_info.data[0:3], eq_info.data[3:6]
-        #         link1_id, link2_id = eq_info.link1_id, eq_info.link2_id
-        #         p_b1 = self._solver.links_state[link1_id, i_b].pos
-        #         p_b2 = self._solver.links_state[link2_id, i_b].pos
-        #         R_b1 = gu.quat_to_R(self._solver.links_state[link1_id, i_b].quat)
-        #         R_b2 = gu.quat_to_R(self._solver.links_state[link2_id, i_b].quat)
+        # pass
+        ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.PARTIAL)
+        for i_eq, i_b in ti.ndrange(self._solver.n_links, self._B):
+            eq_info = self._solver.eq_info[i_eq]
+            jac_b1 = self._solver.eqs_state[i_eq, i_b].jac_body1
+            jac_b2 = self._solver.eqs_state[i_eq, i_b].jac_body2
+            if eq_info.type == gs.EQ_TYPE.CONNECT:
+                anchor1, anchor2 = eq_info.data[0:3], eq_info.data[3:6]
+                link1_id, link2_id = eq_info.link1_id, eq_info.link2_id
+                p_b1 = self._solver.links_state[link1_id, i_b].pos
+                p_b2 = self._solver.links_state[link2_id, i_b].pos
+                R_b1 = gu.quat_to_R(self._solver.links_state[link1_id, i_b].quat)
+                R_b2 = gu.quat_to_R(self._solver.links_state[link2_id, i_b].quat)
 
-        #         pos1 = R_b1 @ anchor1 + p_b1
-        #         pos2 = R_b2 @ anchor2 + p_b2
+                pos1 = R_b1 @ anchor1 + p_b1
+                pos2 = R_b2 @ anchor2 + p_b2
 
-        #         # error is difference in global positions
-        #         pos = pos1 - pos2
+                # error is difference in global positions
+                pos = pos1 - pos2
 
-        #         # compute Jacobian difference (opposite of contact: 0 - 1)
-        #         jacp1 = jac_b1[:3]
-        #         jacp2 = jac_b2[:3]
-        #         j = (jacp1 - jacp2).T
-        #         pos_imp = gs.normalize(pos)
-        #         invweight = (
-        #             self._solver.links_info[link1_id].invweight[0] + self._solver.links_info[link1_id].invweight[0]
-        #         )
+                # compute Jacobian difference (opposite of contact: 0 - 1)
+                jacp1 = jac_b1[:3]
+                jacp2 = jac_b2[:3]
+                j = (jacp1 - jacp2).T
+                pos_imp = gs.normalize(pos)
+                invweight = (
+                    self._solver.links_info[link1_id].invweight[0] + self._solver.links_info[link1_id].invweight[0]
+                )
 
-        #         # Writing constraints to the data
-        #         n_con = ...  # ti.atomic_add(self.n_constraints[i_b], 1)
-        #         self.diag[n_con, i_b] = ...
-        #         self.aref[n_con, i_b] = ...
-        #         self.jac = ...
-        #         self.efc_D[n_con, i_b] = ...
-        #         if ti.static(self.sparse_solve):
-        #             self.jac_n_relevant_dofs = ...
-        #             self.jac_relevant_dofs = ...
+                # Writing constraints to the data
+                n_con = ...  # ti.atomic_add(self.n_constraints[i_b], 1)
+                
+                self.diag[n_con, i_b] = ... # this is r from here https://github.com/google-deepmind/mujoco/blob/3f855f32d9b14179e17812056732d6809f0b4320/mjx/mujoco/mjx/_src/constraint.py#L697
+                self.aref[n_con, i_b] = ... 
+                # imp, aref = gu.imp_aref(impact.sol_params, -impact.penetration, jac_qvel)
+                self.jac = ...
+                self.efc_D[n_con, i_b] = ... # this is 1/r from here https://github.com/google-deepmind/mujoco/blob/3f855f32d9b14179e17812056732d6809f0b4320/mjx/mujoco/mjx/_src/constraint.py#L703
+                if ti.static(self.sparse_solve):
+                    self.jac_n_relevant_dofs = ...
+                    self.jac_relevant_dofs = ...
 
-        #     if eq_info.type == gs.EQ_TYPE.WELD:
-        #         anchor1, anchor2 = eq_info.data[0:3], eq_info.data[3:6]
-        #         relpose, torquescale = eq_info.data[6:10], eq_info.data[10]
+            if eq_info.type == gs.EQ_TYPE.WELD:
+                anchor1, anchor2 = eq_info.data[0:3], eq_info.data[3:6]
+                relpose, torquescale = eq_info.data[6:10], eq_info.data[10]
 
-        #         # error is difference in global position and orientation
-        #         p_b1 = self._solver.links_state[link1_id, i_b].pos
-        #         p_b2 = self._solver.links_state[link2_id, i_b].pos
-        #         R_b1 = gu.quat_to_R(self._solver.links_state[link1_id, i_b].quat)
-        #         R_b2 = gu.quat_to_R(self._solver.links_state[link2_id, i_b].quat)
+                # error is difference in global position and orientation
+                p_b1 = self._solver.links_state[link1_id, i_b].pos
+                p_b2 = self._solver.links_state[link2_id, i_b].pos
+                R_b1 = gu.quat_to_R(self._solver.links_state[link1_id, i_b].quat)
+                R_b2 = gu.quat_to_R(self._solver.links_state[link2_id, i_b].quat)
 
-        #         pos1 = R_b1 @ anchor1 + p_b1
-        #         pos2 = R_b2 @ anchor2 + p_b2
+                pos1 = R_b1 @ anchor1 + p_b1
+                pos2 = R_b2 @ anchor2 + p_b2
 
-        #         cpos = pos1 - pos2
+                cpos = pos1 - pos2
 
-        #         # compute Jacobian difference (opposite of contact: 0 - 1)
-        #         jacp1, jacr1 = jac_b1[:3], jac_b1[3:]
-        #         jacp2, jacr2 = jac_b2[:3], jac_b2[3:]
-        #         jacdifp = jacp1 - jacp2
-        #         jacdifr = (jacr1 - jacr2) * torquescale
+                # compute Jacobian difference (opposite of contact: 0 - 1)
+                jacp1, jacr1 = jac_b1[:3], jac_b1[3:]
+                jacp2, jacr2 = jac_b2[:3], jac_b2[3:]
+                jacdifp = jacp1 - jacp2
+                jacdifr = (jacr1 - jacr2) * torquescale
 
-        #         # compute orientation error: neg(q1) * q0 * relpose (axis components only)
-        #         # The order is reversed compared to multiplication
-        #         quat = gu.transform_quat_by_quat(relpose, self._solver.links_state[link1_id, i_b].quat)
-        #         quat1 = gu.inv_quat(self._solver.links_state[link2_id, i_b].quat)
+                # compute orientation error: neg(q1) * q0 * relpose (axis components only)
+                # The order is reversed compared to multiplication
+                quat = gu.transform_quat_by_quat(relpose, self._solver.links_state[link1_id, i_b].quat)
+                quat1 = gu.inv_quat(self._solver.links_state[link2_id, i_b].quat)
 
-        #         crot = torquescale * gu.transform_quat_by_quat(quat, quat1)[1:]  # copy axis components
+                crot = torquescale * gu.transform_quat_by_quat(quat, quat1)[1:]  # copy axis components
 
-        #         pos = ti.Vector(
-        #             [
-        #                 cpos[0],
-        #                 cpos[1],
-        #                 cpos[2],
-        #                 crot[0],
-        #                 crot[1],
-        #                 crot[2],
-        #             ]
-        #         )
+                pos = ti.Vector(
+                    [
+                        cpos[0],
+                        cpos[1],
+                        cpos[2],
+                        crot[0],
+                        crot[1],
+                        crot[2],
+                    ]
+                )
 
-        #         # Writing constraints to the data
-        #         # correct rotation Jacobian: 0.5 * neg(q1) * (jac0-jac1) * q0 * relpose
-        #         # jac_fn = lambda j: math.quat_mul(math.quat_mul_axis(quat1, j), quat)[1:]
-        #         # jacdifr = 0.5 * jax.vmap(jac_fn)(jacdifr)
-        #         # j = jp.concatenate((jacdifp.T, jacdifr.T))
-        #         # pos_imp = math.norm(pos)
-        #         # invweight = m.body_invweight0[body1id] + m.body_invweight0[body2id]
-        #         # invweight = jp.repeat(invweight, 3, axis=0)
+                # Writing constraints to the data
+                # correct rotation Jacobian: 0.5 * neg(q1) * (jac0-jac1) * q0 * relpose
+                # jac_fn = lambda j: math.quat_mul(math.quat_mul_axis(quat1, j), quat)[1:]
+                # jacdifr = 0.5 * jax.vmap(jac_fn)(jacdifr)
+                # j = jp.concatenate((jacdifp.T, jacdifr.T))
+                # pos_imp = math.norm(pos)
+                # invweight = m.body_invweight0[body1id] + m.body_invweight0[body2id]
+                # invweight = jp.repeat(invweight, 3, axis=0)
 
-        #         n_con = ...  # ti.atomic_add(self.n_constraints[i_b], 1)
-        #         self.diag[n_con, i_b] = ...
-        #         self.aref[n_con, i_b] = ...
-        #         self.jac = ...
-        #         self.efc_D[n_con, i_b] = ...
-        #         if ti.static(self.sparse_solve):
-        #             self.jac_n_relevant_dofs = ...
-        #             self.jac_relevant_dofs = ...
+                n_con = ...  # ti.atomic_add(self.n_constraints[i_b], 1)
+                self.diag[n_con, i_b] = ...
+                self.aref[n_con, i_b] = ...
+                self.jac = ...
+                self.efc_D[n_con, i_b] = ...
+                if ti.static(self.sparse_solve):
+                    self.jac_n_relevant_dofs = ...
+                    self.jac_relevant_dofs = ...
 
-        #     if eq_info.type == gs.EQ_TYPE.JOINT:
-        #         # TODO: rename link to smth more neutral, f.e. obj
-        #         # TODO: the joints in genesis are strictly attached to the links. How exactly?
-        #         # TODO: what about world joint?
-        #         l1_info, l2_info = self._solver.links_info[link1_id], self._solver.links_info[link2_id]
-        #         q0_id, q1_id = l1_info.q_start, l2_info.q_start
-        #         pos1, pos2 = self._solver.qpos[q0_id, i_b], self._solver.qpos[q1_id, i_b]
-        #         ref1, ref2 = self._solver.init_q[q0_id], self._solver.init_q[q0_id]
-        #         dif = pos2 - ref2
-        #         dif_power = ti.Vector([dif[i] ** i for i in ti.static(range(5))])  # jp.power(dif, jp.arange(0, 5))
-        #         pos = pos1 - ref1 - sum(eq_info.data[:5] * dif_power)
-        #         deriv = sum(eq_info.data[1:5] * dif_power[:4] * ti.Vector(range(1, 5)))
+            if eq_info.type == gs.EQ_TYPE.JOINT:
+                # TODO: rename link to smth more neutral, f.e. obj
+                # TODO: the joints in genesis are strictly attached to the links. How exactly?
+                # TODO: what about world joint?
+                l1_info, l2_info = self._solver.links_info[link1_id], self._solver.links_info[link2_id]
+                q0_id, q1_id = l1_info.q_start, l2_info.q_start
+                pos1, pos2 = self._solver.qpos[q0_id, i_b], self._solver.qpos[q1_id, i_b]
+                ref1, ref2 = self._solver.init_q[q0_id], self._solver.init_q[q0_id]
+                dif = pos2 - ref2
+                dif_power = ti.Vector([dif[i] ** i for i in ti.static(range(5))])  # jp.power(dif, jp.arange(0, 5))
+                pos = pos1 - ref1 - sum(eq_info.data[:5] * dif_power)
+                deriv = sum(eq_info.data[1:5] * dif_power[:4] * ti.Vector(range(1, 5)))
 
-        #         # Writing constraints to the data
-        #         n_con = ...  # ti.atomic_add(self.n_constraints[i_b], 1)
-        #         self.diag[n_con, i_b] = ...
-        #         self.aref[n_con, i_b] = ...
-        #         self.jac = ...
-        #         self.efc_D[n_con, i_b] = ...
-        #         if ti.static(self.sparse_solve):
-        #             self.jac_n_relevant_dofs = ...
-        #             self.jac_relevant_dofs = ...
-        #         # j = jp.zeros((m.nv)).at[dofadr2].set(-deriv).at[dofadr1].set(1.0)
-        #         # invweight = m.dof_invweight0[dofadr1]
-        #         # invweight += m.dof_invweight0[dofadr2] * (obj2id > -1)
-        #         # zero = jp.zeros_like(pos)
+                # Writing constraints to the data
+                n_con = ...  # ti.atomic_add(self.n_constraints[i_b], 1)
+                self.diag[n_con, i_b] = ...
+                self.aref[n_con, i_b] = ...
+                self.jac = ...
+                self.efc_D[n_con, i_b] = ...
+                if ti.static(self.sparse_solve):
+                    self.jac_n_relevant_dofs = ...
+                    self.jac_relevant_dofs = ...
+                # j = jp.zeros((m.nv)).at[dofadr2].set(-deriv).at[dofadr1].set(1.0)
+                # invweight = m.dof_invweight0[dofadr1]
+                # invweight += m.dof_invweight0[dofadr2] * (obj2id > -1)
+                # zero = jp.zeros_like(pos)
 
     @ti.func
     def _func_nt_hessian_incremental(self, i_b):
