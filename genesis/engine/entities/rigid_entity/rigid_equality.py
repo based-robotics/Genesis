@@ -25,7 +25,7 @@ class RigidEquality(RBC):
         link2id,
         solimp,
         solref,
-        type,
+        _type,
     ):
         self._uid = gs.UID()
         self._entity = entity
@@ -39,7 +39,7 @@ class RigidEquality(RBC):
         self._link2id = link2id
         self._solimp = solimp
         self._solref = solref
-        self._type = EQ_TYPE(type)
+        self._type = EQ_TYPE(_type)
 
     # TODO: here should go all functions which compute some dampings and forces and something else
 

@@ -97,7 +97,7 @@ class RigidSolver(Solver):
         self._n_vverts = self.n_vverts
         self._n_entities = self.n_entities
         self._n_eqs = self.n_eqs
-        self._n_eq_dofs = self._n_eq_dofs
+        self._n_eq_dofs = self.n_eq_dofs
 
         self._geoms = self.geoms
         self._vgeoms = self.vgeoms
@@ -119,7 +119,7 @@ class RigidSolver(Solver):
         self.n_vverts_ = max(1, self.n_vverts)
         self.n_entities_ = max(1, self.n_entities)
         self.n_eqs_ = max(1, self.n_eqs)
-        self.n_eq_dofs_ = max(1, self.m_eq_dofs)
+        self.n_eq_dofs_ = max(1, self.n_eq_dofs)
 
         if self.is_active():
             self._init_mass_mat()
@@ -3731,6 +3731,7 @@ class RigidSolver(Solver):
         else:
             return len(self.joints)
 
+    @property
     def n_eqs(self):
         if self.is_built:
             return self._n_eqs
