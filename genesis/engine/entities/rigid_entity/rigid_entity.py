@@ -110,7 +110,6 @@ class RigidEntity(Entity):
             n_qs = 0
             n_dofs = 0
             init_qpos = np.zeros(0)
-
         else:
             joint_type = gs.JOINT_TYPE.FREE
             n_qs = 7
@@ -180,6 +179,25 @@ class RigidEntity(Entity):
             init_qpos=init_qpos,
         )
 
+        # Add equality constraint for fixed joints
+        # if morph.fixed:
+        self._add_equality(
+            name=f"{link_name_prefix}_fixed",
+            type=gs.EQ_TYPE.CONNECT,
+            data=np.concatenate([
+                np.zeros(3),  # anchor1 
+                np.zeros(3),  # anchor2
+                np.array([1,0,0,0]),  # relpose quat
+                np.array([1.0])  # torquescale
+            ]),
+            link1_id=link.idx,
+            link2_id=link.idx,
+            sol_params=gu.default_solver_params(n=6),  # 6-DOF constraint
+            active0=True
+        )
+
+        # TODO: add equality constraints
+
         # contains one visual geom (vgeom) and one collision geom (geom)
         if morph.visualization:
             link._add_vgeom(
@@ -205,14 +223,14 @@ class RigidEntity(Entity):
             n_qs = 0
             n_dofs = 0
             init_qpos = np.zeros(0)
-
         else:
             joint_type = gs.JOINT_TYPE.FREE
             n_qs = 7
             n_dofs = 6
             init_qpos = np.concatenate([morph.pos, morph.quat])
+        
         link_name = morph.file.split("/")[-1].replace(".", "_")
-
+        
         link = self._add_link(
             name=f"{link_name}_baselink",
             pos=np.array(morph.pos),
@@ -244,6 +262,16 @@ class RigidEntity(Entity):
             dofs_force_range=gu.default_dofs_force_range(n_dofs),
             init_qpos=init_qpos,
         )
+        
+        
+        # self._add_equality(
+        #     name="connect",
+        #     type=gs.EQ_TYPE.CONNECT,
+        #     data=np.array([0.0, 0.0, 0.0, 1.0, 0.0, 0.0]),
+        #     link1_id=link.idx,
+        #     link2_id=link.idx,
+        #     sol_params=gu.default_solver_params(n_dofs),
+        # )
 
         vmeshes, meshes = mu.parse_visual_and_col_mesh(morph, surface)
 
@@ -362,7 +390,14 @@ class RigidEntity(Entity):
             q_offset += j_info["n_qs"]
             dof_offset += j_info["n_dofs"]
 
+        # Parse equality constraints from MuJoCo model
+        for i_eq in range(n_eqs):
+            eq_info = mju.parse_constraints(mj, i_eq)
+            eq_infos.append(eq_info)
+
         l_infos, j_infos, links_g_info = uu._order_links(l_infos, j_infos, links_g_info)
+        
+        # Add links and joints
         for i_l in range(len(l_infos)):
             l_info = l_infos[i_l]
             j_info = j_infos[i_l]
@@ -392,8 +427,7 @@ class RigidEntity(Entity):
                 eq_info["name"],
                 eq_info["link1id"],
                 eq_info["link2id"],
-                eq_info["solimp"],
-                eq_info["solref"],
+                eq_info["sol_params"],
                 eq_info["type"],
             )
 
@@ -634,27 +668,43 @@ class RigidEntity(Entity):
 
     def _add_equality(
         self,
-        active0,
-        data,
-        id,
         name,
-        link1id,
-        link2id,
-        solimp,
-        solref,
-        _type,
+        type,
+        data,
+        link1_id,
+        link2_id,
+        sol_params,
+        active0=True,
     ):
+        """Add an equality constraint between links
+        
+        Parameters
+        ----------
+        name : str
+            Name of the constraint
+        type : EQ_TYPE
+            Type of constraint (CONNECT, WELD, or JOINT) 
+        data : array_like
+            Constraint-specific data
+        link1_id : int
+            ID of first link (local ID within entity)
+        link2_id : int  
+            ID of second link (local ID within entity)
+        sol_params : array_like
+            Solver parameters for impedance calculation
+        active0 : bool, optional
+            Whether constraint starts active, by default True
+        """
         equality = RigidEquality(
             entity=self,
             active0=active0,
             data=data,
-            id=id,
+            id=self.n_eqs,
             name=name,
-            link1id=link1id,
-            link2id=link2id,
-            solimp=solimp,
-            solref=solref,
-            _type=_type,
+            link1id=link1_id,  # Keep local ID
+            link2id=link2_id,  # Keep local ID
+            sol_params=sol_params,
+            _type=type,
         )
 
         self._equalities.append(equality)
@@ -2530,3 +2580,18 @@ class RigidEntity(Entity):
     def base_joint(self):
         """The base joint of the entity"""
         return self._joints[0]
+
+    @property
+    def equalities(self):
+        """The list of equality constraints in the entity."""
+        return self._equalities
+
+    @property
+    def n_eqs(self):
+        """Number of equality constraints"""
+        return len(self._equalities)
+
+    @property
+    def n_eq_constraints(self):
+        """Total number of scalar equality constraints"""
+        return sum(eq.n_constraints for eq in self._equalities)
