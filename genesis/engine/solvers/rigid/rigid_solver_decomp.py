@@ -153,6 +153,7 @@ class RigidSolver(Solver):
             self._kernel_forward_kinematics_links_geoms()
 
             self._init_invweight()
+
     def _init_invweight(self):
         self._kernel_forward_dynamics()
 
@@ -563,8 +564,7 @@ class RigidSolver(Solver):
             type=gs.ti_int,
             link1_id=gs.ti_int,
             link2_id=gs.ti_int,
-            solref=gs.ti_float,
-            solimp=gs.ti_float,
+            sol_params=ti.types.vector(7, gs.ti_float),
             data=ti.types.vector(11, gs.ti_float),  # FIXME: 11 is a magic number
         )
         struct_eq_state = ti.types.struct(
@@ -580,12 +580,10 @@ class RigidSolver(Solver):
         )
         self._kernel_init_eq_fields(
             eq_type=np.array([eq.type.value for eq in self.eqs], dtype=gs.np_int),
-            eq_link1_id=np.array([eq.obj1_id for eq in self.eqs], dtype=gs.np_int),
-            eq_link2_id=np.array([eq.obj2_id for eq in self.eqs], dtype=gs.np_int),
-            eq_solparams=np.array([eq.sol_params for eq in self.eqs], dtype=gs.np_float),
+            eq_link1_id=np.array([eq.link1id for eq in self.eqs], dtype=gs.np_int),
+            eq_link2_id=np.array([eq.link2id for eq in self.eqs], dtype=gs.np_int),
+            eq_sol_params=np.array([eq.sol_params for eq in self.eqs], dtype=gs.np_float),
             eq_data=np.array([eq.data for eq in self.eqs], dtype=gs.np_float),
-            link1_jac=np.array([eq.link1_jac for eq in self.eqs], dtype=gs.np_float),
-            link2_jac=np.array([eq.link2_jac for eq in self.eqs], dtype=gs.np_float),
         )
 
     @ti.kernel
@@ -594,29 +592,19 @@ class RigidSolver(Solver):
         eq_type: ti.types.ndarray(),
         eq_link1_id: ti.types.ndarray(),
         eq_link2_id: ti.types.ndarray(),
-        eq_solparams: ti.types.ndarray(),
+        eq_sol_params: ti.types.ndarray(),
         eq_data: ti.types.ndarray(),
-        eq_link1_jac: ti.types.ndarray(),
-        eq_link2_jac: ti.types.ndarray(),
     ):
         ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.PARTIAL)
         for i in range(self.n_eqs):
-            self.eqs_info[i].eq_type = eq_type[i]
+            self.eqs_info[i].type = eq_type[i]
             self.eqs_info[i].link1_id = eq_link1_id[i]
             self.eqs_info[i].link2_id = eq_link2_id[i]
 
             for j in ti.static(range(11)):  # FIXME: magic number
                 self.eqs_info[i].data[j] = eq_data[i, j]
             for j in ti.static(range(7)):  # FIXME: magic number
-                self.eqs_info[i].solparams[j] = eq_solparams[i, j]
-                
-        ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.PARTIAL)
-        for i, d, b in ti.ndrange(self.n_eqs, self.n_dofs, self._B):
-            for jrow_idx in ti.static(range(6)):
-                # TODO: validate indices
-                self.eqs_info[i, b].link1_jac[jrow_idx, d] = eq_link1_jac[i, b, jrow_idx, d]
-                self.eqs_info[i, b].link2_jac[jrow_idx, d] = eq_link2_jac[i, b, jrow_idx, d]
-
+                self.eqs_info[i].sol_params[j] = eq_sol_params[i, j]
 
     def _init_vert_fields(self):
         # collisioin geom
@@ -4080,6 +4068,16 @@ class RigidSolver(Solver):
             return joints
 
     @property
+    def eqs(self):
+        if self.is_built:
+            return self._eqs
+        else:
+            eqs = gs.List()
+            for entity in self._entities:
+                eqs += entity.equalities
+            return eqs
+
+    @property
     def geoms(self):
         if self.is_built:
             return self._geoms
@@ -4119,6 +4117,13 @@ class RigidSolver(Solver):
             return self._n_geoms
         else:
             return len(self.geoms)
+
+    @property
+    def n_eqs(self):
+        if self.is_built:
+            return self._n_eqs
+        else:
+            return len(self.eqs)
 
     @property
     def n_cells(self):
@@ -4184,6 +4189,13 @@ class RigidSolver(Solver):
             return sum([entity.n_dofs for entity in self._entities])
 
     @property
+    def n_eq_dofs(self):
+        if self.is_built:
+            return self._n_eq_dofs
+        else:
+            return sum([entity.n_eq_dofs for entity in self._entities])
+
+    @property
     def init_qpos(self):
         if len(self._entities) == 0:
             return np.array([])
@@ -4193,4 +4205,3 @@ class RigidSolver(Solver):
     @property
     def max_collision_pairs(self):
         return self._max_collision_pairs
-

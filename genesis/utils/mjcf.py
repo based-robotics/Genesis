@@ -363,14 +363,14 @@ def parse_geom(mj, i_g, scale, convexify, surface, xml_path):
 
 def parse_constraints(mj, i_eq):
     """Parse i_eq-th constraint of the mujoco model
-    
+
     Parameters
     ----------
     mj : mujoco.MjModel
         MuJoCo model
     i_eq : int
         Index of equality constraint
-        
+
     Returns
     -------
     dict
@@ -378,18 +378,16 @@ def parse_constraints(mj, i_eq):
     """
     info = dict()
     eq_view = mj.eq(i_eq)
-
     info["active0"] = eq_view.active0
     info["data"] = eq_view.data
     info["name"] = eq_view.name
-    info["link1id"] = eq_view.obj1id
-    info["link2id"] = eq_view.obj2id
+    info["link1id"] = eq_view.obj1id[0]
+    info["link2id"] = eq_view.obj2id[0]
     info["type"] = eq_view.type
 
     # Combine solref and solimp into sol_params like other parsers
-    info["sol_params"] = np.concatenate([
-        eq_view.solref,  # [0:2] - solref parameters
-        eq_view.solimp   # [2:7] - solimp parameters
-    ])
+    info["sol_params"] = np.concatenate(
+        [eq_view.solref, eq_view.solimp]  # [0:2] - solref parameters  # [2:7] - solimp parameters
+    )
 
     return info

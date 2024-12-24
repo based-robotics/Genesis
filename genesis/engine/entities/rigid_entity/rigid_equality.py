@@ -57,7 +57,7 @@ class RigidEquality(RBC):
     def link2_jac(self, envs_idx=None) -> np.ndarray:
         return self._solver.get_links_jac([self._link1id], [envs_idx], dof_start=self._entity.dof_start)
 
-    @property 
+    @property
     def dim(self):
         """Get constraint dimensionality"""
         if self._type == EQ_TYPE.CONNECT:
@@ -89,7 +89,7 @@ class RigidEquality(RBC):
         """Get first link's local ID within entity"""
         return self._link1id_local
 
-    @property 
+    @property
     def link2id_local(self):
         """Get second link's local ID within entity"""
         return self._link2id_local
@@ -97,12 +97,12 @@ class RigidEquality(RBC):
     @property
     def link1id(self):
         """Get first link's global ID in solver"""
-        return self._link1id_local + self._entity._link_start
+        return self._link1id_local + self._entity.base_link_idx
 
     @property
     def link2id(self):
         """Get second link's global ID in solver"""
-        return self._link2id_local + self._entity._link_start
+        return self._link2id_local + self._entity.base_link_idx
 
     @property
     def uid(self) -> gs.UID:
@@ -157,15 +157,19 @@ class RigidEquality(RBC):
     @property
     def invweight(self):
         """Get inverse weight for constraint"""
-        return (
-            self._solver.links_info[self.link1id].invweight[0] + 
-            self._solver.links_info[self.link2id].invweight[0]
-        )
+        return self._solver.links_info[self.link1id].invweight[0] + self._solver.links_info[self.link2id].invweight[0]
 
     @property
     def n_constraints(self):
         """Get number of scalar constraints this equality represents"""
         return self.dim
+
+    @property
+    def is_built(self):
+        """
+        Returns whether the entity the joint belongs to is built.
+        """
+        return self.entity.is_built
 
     def get_error(self, i_b):
         """Get constraint error for batch index i_b"""
@@ -175,18 +179,18 @@ class RigidEquality(RBC):
             p_b2 = self._solver.links_state[self.link2id, i_b].pos
             R_b1 = gu.quat_to_R(self._solver.links_state[self.link1id, i_b].quat)
             R_b2 = gu.quat_to_R(self._solver.links_state[self.link2id, i_b].quat)
-            
+
             anchor1, anchor2 = self._data[0:3], self._data[3:6]
             pos1 = R_b1 @ anchor1 + p_b1
             pos2 = R_b2 @ anchor2 + p_b2
             return pos1 - pos2
-        
+
         elif self._type == EQ_TYPE.WELD:
             # TODO: Implement WELD error calculation
             pass
-        
+
         elif self._type == EQ_TYPE.JOINT:
             # TODO: Implement JOINT error calculation
             pass
-        
+
         return None
