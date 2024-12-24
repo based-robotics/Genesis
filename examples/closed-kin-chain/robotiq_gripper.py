@@ -30,7 +30,10 @@ def main():
         ),
         viewer_options=viewer_options,
         show_viewer=args.vis,
+        show_FPS=False,
     )
+    
+    print(scene.rigid_solver._options)
 
     ########################## entities ##########################
     plane = scene.add_entity(
@@ -47,6 +50,7 @@ def main():
     scene.build()
     for i in range(100000):
         scene.step()
+        print(scene.rigid_solver.constraint_solver.aref)
 
 
 if __name__ == "__main__":

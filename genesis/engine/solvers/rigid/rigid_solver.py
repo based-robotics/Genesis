@@ -1361,7 +1361,7 @@ class RigidSolver(Solver):
 
         if self._enable_joint_limit:
             self.constraint_solver.add_joint_limit_constraints()
-
+            
         if self._enable_equality:
             self.constraint_solver.add_equality_constraints()
 

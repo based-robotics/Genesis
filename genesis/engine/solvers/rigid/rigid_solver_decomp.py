@@ -27,6 +27,7 @@ class RigidSolver(Solver):
         self._enable_collision = options.enable_collision
         self._enable_joint_limit = options.enable_joint_limit
         self._enable_self_collision = options.enable_self_collision
+        self._enable_equality = options.enable_equality  # Add equality flag
         self._max_collision_pairs = options.max_collision_pairs
         self._integrator = options.integrator
 
@@ -107,6 +108,8 @@ class RigidSolver(Solver):
         self._n_vfaces = self.n_vfaces
         self._n_vverts = self.n_vverts
         self._n_entities = self.n_entities
+        self._n_eqs = self.n_eqs  # Add equality constraints count
+        self._n_eq_dofs = self.n_eq_dofs  # Add equality DOFs count
 
         self._geoms = self.geoms
         self._vgeoms = self.vgeoms
@@ -127,6 +130,8 @@ class RigidSolver(Solver):
         self.n_vfaces_ = max(1, self.n_vfaces)
         self.n_vverts_ = max(1, self.n_vverts)
         self.n_entities_ = max(1, self.n_entities)
+        self.n_eqs_ = max(1, self.n_eqs)  # Add equality dummy field
+        self.n_eq_dofs_ = max(1, self.n_eq_dofs)  # Add equality DOFs dummy field
 
         if self.is_active():
             self._init_mass_mat()
@@ -137,6 +142,7 @@ class RigidSolver(Solver):
             self._init_vgeom_fields()
             self._init_link_fields()
             self._init_entity_fields()
+            self._init_eq_fields()  # Add equality fields initialization
 
             self._init_envs_offset()
             self._init_sdf()
@@ -147,7 +153,6 @@ class RigidSolver(Solver):
             self._kernel_forward_kinematics_links_geoms()
 
             self._init_invweight()
-
     def _init_invweight(self):
         self._kernel_forward_dynamics()
 
@@ -552,6 +557,66 @@ class RigidSolver(Solver):
             ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.PARTIAL)
             for b in range(self._B):
                 self.n_awake_links[b] = self.n_links
+
+    def _init_eq_fields(self):
+        struct_eq_info = ti.types.struct(
+            type=gs.ti_int,
+            link1_id=gs.ti_int,
+            link2_id=gs.ti_int,
+            solref=gs.ti_float,
+            solimp=gs.ti_float,
+            data=ti.types.vector(11, gs.ti_float),  # FIXME: 11 is a magic number
+        )
+        struct_eq_state = ti.types.struct(
+            link1_jac=ti.types.matrix(6, self.n_dofs, dtype=gs.ti_float),
+            link2_jac=ti.types.matrix(6, self.n_dofs, dtype=gs.ti_float),
+        )
+
+        self.eqs_info = struct_eq_info.field(shape=self.n_eqs, needs_grad=False, layout=ti.Layout.SOA)
+        self.eqs_state = struct_eq_state.field(
+            shape=self._batch_shape(self.n_links),
+            needs_grad=False,
+            layout=ti.Layout.SOA,
+        )
+        self._kernel_init_eq_fields(
+            eq_type=np.array([eq.type.value for eq in self.eqs], dtype=gs.np_int),
+            eq_link1_id=np.array([eq.obj1_id for eq in self.eqs], dtype=gs.np_int),
+            eq_link2_id=np.array([eq.obj2_id for eq in self.eqs], dtype=gs.np_int),
+            eq_solparams=np.array([eq.sol_params for eq in self.eqs], dtype=gs.np_float),
+            eq_data=np.array([eq.data for eq in self.eqs], dtype=gs.np_float),
+            link1_jac=np.array([eq.link1_jac for eq in self.eqs], dtype=gs.np_float),
+            link2_jac=np.array([eq.link2_jac for eq in self.eqs], dtype=gs.np_float),
+        )
+
+    @ti.kernel
+    def _kernel_init_eq_fields(
+        self,
+        eq_type: ti.types.ndarray(),
+        eq_link1_id: ti.types.ndarray(),
+        eq_link2_id: ti.types.ndarray(),
+        eq_solparams: ti.types.ndarray(),
+        eq_data: ti.types.ndarray(),
+        eq_link1_jac: ti.types.ndarray(),
+        eq_link2_jac: ti.types.ndarray(),
+    ):
+        ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.PARTIAL)
+        for i in range(self.n_eqs):
+            self.eqs_info[i].eq_type = eq_type[i]
+            self.eqs_info[i].link1_id = eq_link1_id[i]
+            self.eqs_info[i].link2_id = eq_link2_id[i]
+
+            for j in ti.static(range(11)):  # FIXME: magic number
+                self.eqs_info[i].data[j] = eq_data[i, j]
+            for j in ti.static(range(7)):  # FIXME: magic number
+                self.eqs_info[i].solparams[j] = eq_solparams[i, j]
+                
+        ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.PARTIAL)
+        for i, d, b in ti.ndrange(self.n_eqs, self.n_dofs, self._B):
+            for jrow_idx in ti.static(range(6)):
+                # TODO: validate indices
+                self.eqs_info[i, b].link1_jac[jrow_idx, d] = eq_link1_jac[i, b, jrow_idx, d]
+                self.eqs_info[i, b].link2_jac[jrow_idx, d] = eq_link2_jac[i, b, jrow_idx, d]
+
 
     def _init_vert_fields(self):
         # collisioin geom
@@ -1420,6 +1485,9 @@ class RigidSolver(Solver):
         if self._enable_collision or self._enable_joint_limit:
             self.constraint_solver.clear()
         timer.stamp("constraint_solver.clear")
+
+        if self._enable_equality:
+            self.constraint_solver.add_equality_constraints()
 
         if self._enable_collision:
             self.collider.clear()
@@ -4125,3 +4193,4 @@ class RigidSolver(Solver):
     @property
     def max_collision_pairs(self):
         return self._max_collision_pairs
+

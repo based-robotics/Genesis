@@ -98,12 +98,74 @@ class ConstraintSolver:
             self.n_constraints[b] = 0
 
     @ti.kernel
-    def add_equality_constraint(self):
-        # TODO:
-
-        # self.rigid_
-
-        pass
+    def add_equality_constraints(self):
+        ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.PARTIAL)
+        for i_eq, i_b in ti.ndrange(self._solver.n_links, self._B):
+            eq_info = self._solver.eq_info[i_eq]
+            
+            if eq_info.type == gs.EQ_TYPE.CONNECT:
+                # Extract data and IDs
+                anchor1, anchor2 = eq_info.data[0:3], eq_info.data[3:6]
+                link1_id, link2_id = eq_info.link1_id, eq_info.link2_id
+                
+                # Get global positions of anchor points
+                p_b1 = self._solver.links_state[link1_id, i_b].pos
+                p_b2 = self._solver.links_state[link2_id, i_b].pos
+                R_b1 = gu.quat_to_R(self._solver.links_state[link1_id, i_b].quat)
+                R_b2 = gu.quat_to_R(self._solver.links_state[link2_id, i_b].quat)
+                pos1 = R_b1 @ anchor1 + p_b1
+                pos2 = R_b2 @ anchor2 + p_b2
+                
+                # Error is difference in global positions
+                pos = pos1 - pos2
+                
+                # Get Jacobians
+                jac_b1 = self._solver.eqs_state[i_eq, i_b].jac_body1
+                jac_b2 = self._solver.eqs_state[i_eq, i_b].jac_body2
+                jacp1 = jac_b1[:3]  # translational part
+                jacp2 = jac_b2[:3]  # translational part
+                j = (jacp1 - jacp2).T
+                
+                # Calculate velocity for impedance
+                jac_qvel = gs.ti_float(0.0)
+                for i_d in range(self._solver.n_dofs):
+                    jac_qvel += j[0, i_d] * self._solver.dofs_state[i_d, i_b].vel
+                
+                # Calculate impedance and inverse weight
+                invweight = (
+                    self._solver.links_info[link1_id].invweight[0] + 
+                    self._solver.links_info[link2_id].invweight[0]
+                )
+                
+                # Add constraint for each position component
+                for i_xyz in range(3):
+                    n_con = ti.atomic_add(self.n_constraints[i_b], 1)
+                    
+                    # Calculate impedance parameters using gu.imp_aref
+                    imp, aref = gu.imp_aref(eq_info.sol_params, pos[i_xyz], jac_qvel)
+                    diag = invweight * (1.0 - imp) / (imp + gs.EPS)
+                    
+                    # Store constraint data
+                    self.diag[n_con, i_b] = diag
+                    self.aref[n_con, i_b] = aref
+                    self.efc_D[n_con, i_b] = 1.0 / ti.max(gs.EPS, diag)
+                    
+                    # Store Jacobian row
+                    if ti.static(self.sparse_solve):
+                        con_n_relevant_dofs = 0
+                        for link_id in (link1_id, link2_id):
+                            link = link_id
+                            while link > -1:
+                                for i_d_ in range(self._solver.links_info[link].n_dofs):
+                                    i_d = self._solver.links_info[link].dof_end - 1 - i_d_
+                                    self.jac[n_con, i_d, i_b] = j[i_xyz, i_d]
+                                    self.jac_relevant_dofs[n_con, con_n_relevant_dofs, i_b] = i_d
+                                    con_n_relevant_dofs += 1
+                                link = self._solver.links_info[link].parent_idx
+                        self.jac_n_relevant_dofs[n_con, i_b] = con_n_relevant_dofs
+                    else:
+                        for i_d in range(self._solver.n_dofs):
+                            self.jac[n_con, i_d, i_b] = j[i_xyz, i_d]
 
     @ti.kernel
     def add_collision_constraints(self):

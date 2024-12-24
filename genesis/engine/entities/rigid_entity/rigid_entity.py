@@ -394,7 +394,7 @@ class RigidEntity(Entity):
             if eq_info is not None:  # Make sure we got valid constraint info
                 # Add default solver parameters if not present
                 if "sol_params" not in eq_info:
-                    eq_info["sol_params"] = gu.default_solver_params(n=6)  # 6-DOF constraint by default
+                    eq_info["sol_params"] = gu.default_solver_params(n=1)  # 1-DOF constraint by default
                 eq_infos.append(eq_info)
 
         l_infos, j_infos, links_g_info = uu._order_links(l_infos, j_infos, links_g_info)
@@ -516,6 +516,7 @@ class RigidEntity(Entity):
             link._build()
 
         self._n_qs = self.n_qs
+        self._n_eqs = self.n_eqs
         self._n_dofs = self.n_dofs
         self._is_built = True
 
@@ -2584,13 +2585,3 @@ class RigidEntity(Entity):
     def equalities(self):
         """The list of equality constraints in the entity."""
         return self._equalities
-
-    @property
-    def n_eqs(self):
-        """Number of equality constraints"""
-        return len(self._equalities)
-
-    @property
-    def n_eq_constraints(self):
-        """Total number of scalar equality constraints"""
-        return sum(eq.n_constraints for eq in self._equalities)

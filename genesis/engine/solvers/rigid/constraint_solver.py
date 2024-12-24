@@ -269,6 +269,7 @@ class ConstraintSolver:
                     self._solver.links_info[link1_id].invweight[0] + 
                     self._solver.links_info[link2_id].invweight[0]
                 )
+                # print(invweight)
                 
                 # Add constraint for each position component
                 for i_xyz in range(3):
