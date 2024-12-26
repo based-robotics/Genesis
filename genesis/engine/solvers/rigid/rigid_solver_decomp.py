@@ -108,7 +108,7 @@ class RigidSolver(Solver):
         self._n_vfaces = self.n_vfaces
         self._n_vverts = self.n_vverts
         self._n_entities = self.n_entities
-        self._n_eqs = self.n_eqs  # Add equality constraints count
+        self._n_eqs = self.n_eqs  # Add equality constraints counn_eqst
         self._n_eq_dofs = self.n_eq_dofs  # Add equality DOFs count
 
         self._geoms = self.geoms
@@ -1382,6 +1382,7 @@ class RigidSolver(Solver):
         self._func_bias_force()
         self._func_compute_qacc()
         self._func_clear_external_force()
+        self._func_compute_link_jac()
 
     def substep(self):
         from genesis.utils.tools import create_timer
@@ -1473,9 +1474,6 @@ class RigidSolver(Solver):
         if self._enable_collision or self._enable_joint_limit:
             self.constraint_solver.clear()
         timer.stamp("constraint_solver.clear")
-
-        if self._enable_equality:
-            self.constraint_solver.add_equality_constraints()
 
         if self._enable_collision:
             self.collider.clear()
@@ -2945,6 +2943,21 @@ class RigidSolver(Solver):
                             self.dofs_info[dof_start + i_d_].limit[1],
                         )
 
+    @ti.func
+    def _func_compute_link_jac(self):
+        ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.ALL)
+        for i, b in ti.ndrange(self.n_eqs, self._B):
+            l1id, l2id = self.eqs_info[i].link1_id, self.eqs_info[i].link2_id
+            dof_start1, dof_start2 = self.links_info[l1id].dof_start, self.links_info[l2id].dof_start
+            self._kernel_get_links_jac(
+                [self.eqs_state[i, b].link1_jac, self.eqs_state[i, b].link1_jac],
+                [l1id, l2id],
+                [self._scene._envs_idx, self._scene._envs_idx],
+                dof_starts=[dof_start1, dof_start2],
+            )
+            self.eqs_state[i, b].link1_jac = link1_jac
+            self.eqs_state[i, b].link2_jac = link2_jac
+
     def substep_pre_coupling(self, f):
         if self.is_active():
             self.substep()
@@ -3238,6 +3251,83 @@ class RigidSolver(Solver):
 
     def _get_qs_idx(self, qs_idx_local=None):
         return self._get_qs_idx_local(qs_idx_local) + self._q_start
+
+    def get_links_jac(self, links_idx, dof_start, envs_idx=None):
+        tensor, links_idx, envs_idx = self._validate_ND_io_variables(
+            None, links_idx, (6, self.n_dofs), envs_idx, idx_name="links_idx"
+        )
+
+        self._kernel_get_links_jac(tensor, links_idx, dof_start, envs_idx)
+
+        if self.n_envs == 0:
+            tensor = tensor.squeeze(0)
+        return tensor
+
+    @ti.kernel
+    def _kernel_get_links_jac(
+        self,
+        tensor: ti.types.ndarray(),
+        links_idx: ti.types.ndarray(),
+        dof_starts: ti.types.ndarray(),
+        envs_idx: ti.types.ndarray(),
+    ):
+        ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.PARTIAL)
+        for i_l_, i_b_ in ti.ndrange(links_idx.shape[0], envs_idx.shape[0]):
+            i_l = links_idx[i_l_]
+            dof_start = dof_starts[i_l]
+            tgt_link_pos = self.links_state[i_l, i_b_].pos
+            while i_l > -1:
+                l_info = self.links_info[i_l]
+                l_state = self.links_state[i_l, i_b_]
+
+                if l_info.joint_type == gs.JOINT_TYPE.FIXED:
+                    pass
+
+                elif l_info.joint_type == gs.JOINT_TYPE.REVOLUTE:
+                    i_d = l_info.dof_start
+                    i_d_jac = i_d - dof_start
+                    rotation = gu.ti_transform_by_quat(self.dofs_info[i_d].motion_ang, l_state.quat)
+                    translation = rotation.cross(tgt_link_pos - l_state.pos)
+
+                    tensor[0, i_d_jac, i_b_] = translation[0]
+                    tensor[1, i_d_jac, i_b_] = translation[1]
+                    tensor[2, i_d_jac, i_b_] = translation[2]
+                    tensor[3, i_d_jac, i_b_] = rotation[0]
+                    tensor[4, i_d_jac, i_b_] = rotation[1]
+                    tensor[5, i_d_jac, i_b_] = rotation[2]
+
+                elif l_info.joint_type == gs.JOINT_TYPE.PRISMATIC:
+                    i_d = l_info.dof_start
+                    i_d_jac = i_d - dof_start
+                    translation = gu.ti_transform_by_quat(self.dofs_info[i_d].motion_vel, l_state.quat)
+
+                    tensor[0, i_d_jac, i_b_] = translation[0]
+                    tensor[1, i_d_jac, i_b_] = translation[1]
+                    tensor[2, i_d_jac, i_b_] = translation[2]
+
+                elif l_info.joint_type == gs.JOINT_TYPE.FREE:
+                    # translation
+                    for i_d_ in range(3):
+                        i_d = l_info.dof_start + i_d_
+                        i_d_jac = i_d - dof_start
+
+                        tensor[i_d_, i_d_jac, i_b_] = 1.0
+
+                    # rotation
+                    for i_d_ in range(3):
+                        i_d = l_info.dof_start + i_d_ + 3
+                        i_d_jac = i_d - dof_start
+                        rotation = self.dofs_info[i_d].motion_ang
+                        translation = rotation.cross(tgt_link_pos - l_state.pos)
+
+                        tensor[0, i_d_jac, i_b_] = translation[0]
+                        tensor[1, i_d_jac, i_b_] = translation[1]
+                        tensor[2, i_d_jac, i_b_] = translation[2]
+                        tensor[3, i_d_jac, i_b_] = rotation[0]
+                        tensor[4, i_d_jac, i_b_] = rotation[1]
+                        tensor[5, i_d_jac, i_b_] = rotation[2]
+
+                i_l = l_info.parent_idx
 
     def set_links_pos(self, pos, links_idx, envs_idx=None):
         """

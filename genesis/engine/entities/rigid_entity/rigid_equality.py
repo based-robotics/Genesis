@@ -55,7 +55,7 @@ class RigidEquality(RBC):
 
     @gs.assert_built
     def link2_jac(self, envs_idx=None) -> np.ndarray:
-        return self._solver.get_links_jac([self._link1id], [envs_idx], dof_start=self._entity.dof_start)
+        return self._solver.get_links_jac([self._link2id], [envs_idx], dof_start=self._entity.dof_start)
 
     @property
     def dim(self):

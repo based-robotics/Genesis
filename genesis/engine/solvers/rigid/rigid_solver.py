@@ -572,13 +572,6 @@ class RigidSolver(Solver):
             for j in ti.static(range(11)):  # FIXME: magic number
                 self.links_info[i].data[j] = eq_data[i, j]
 
-        ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.PARTIAL)
-        for i, d, b in ti.ndrange(self.n_eqs, self.n_dofs, self._B):
-            for jrow_idx in ti.static(range(6)):
-                # TODO: validate indices
-                self.eqs_info[i, b].link1_jac[jrow_idx, d] = eq_link1_jac[i, b, jrow_idx, d]
-                self.eqs_info[i, b].link2_jac[jrow_idx, d] = eq_link2_jac[i, b, jrow_idx, d]
-
     def _init_vert_fields(self):
         # collisioin geom
         struct_vert_info = ti.types.struct(
@@ -1361,7 +1354,7 @@ class RigidSolver(Solver):
 
         if self._enable_joint_limit:
             self.constraint_solver.add_joint_limit_constraints()
-            
+
         if self._enable_equality:
             self.constraint_solver.add_equality_constraints()
 
