@@ -14,7 +14,7 @@ def main():
     args = parser.parse_args()
 
     ########################## init ##########################
-    gs.init(backend=gs.gpu)
+    gs.init(backend=gs.gpu, debug=True)
 
     ########################## create a scene ##########################
     viewer_options = gs.options.ViewerOptions(
@@ -32,7 +32,7 @@ def main():
         show_viewer=args.vis,
         show_FPS=False,
     )
-    
+
     print(scene.rigid_solver._options)
 
     ########################## entities ##########################

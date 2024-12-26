@@ -24,6 +24,7 @@ class ConstraintSolver:
         self.len_constraints = (
             5 * self._collider._max_contact_pairs
             + np.logical_not(np.isinf(self._solver.dofs_info.limit.to_numpy()[:, 0])).sum()
+            + self._solver.n_eq_dofs
         )
         self.len_constraints_ = max(1, self.len_constraints)
 
@@ -100,7 +101,7 @@ class ConstraintSolver:
     @ti.kernel
     def add_equality_constraints(self):
         ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.PARTIAL)
-        for i_eq, i_b in ti.ndrange(self._solver.n_links, self._B):
+        for i_eq, i_b in ti.ndrange(self._solver.n_eqs, self._B):
             eqs_info = self._solver.eqs_info[i_eq]
 
             if eqs_info.type == gs.EQ_TYPE.CONNECT:
@@ -124,16 +125,18 @@ class ConstraintSolver:
                 jac_b2 = self._solver.eqs_state[i_eq, i_b].link2_jac
                 j = jac_b1 - jac_b2
 
-                # Calculate velocity for impedance
-                jac_qvel = gs.ti_float(0.0)
-                for i_d in range(self._solver.n_dofs):
-                    jac_qvel += j[i_d, 0] * self._solver.dofs_state[i_d, i_b].vel
-
-                # Calculate impedance and inverse weight
-                invweight = self._solver.links_info[link1_id].invweight + self._solver.links_info[link2_id].invweight
-
                 # Add constraint for each position component
                 for i_xyz in range(3):
+                    # Calculate velocity for impedance
+                    jac_qvel = gs.ti_float(0.0)
+                    for i_d in range(self._solver.n_dofs):
+                        jac_qvel += j[i_xyz, i_d] * self._solver.dofs_state[i_d, i_b].vel
+
+                    # Calculate impedance and inverse weight
+                    invweight = (
+                        self._solver.links_info[link1_id].invweight + self._solver.links_info[link2_id].invweight
+                    )
+
                     n_con = ti.atomic_add(self.n_constraints[i_b], 1)
 
                     # Calculate impedance parameters using gu.imp_aref
@@ -153,7 +156,7 @@ class ConstraintSolver:
                             while link > -1:
                                 for i_d_ in range(self._solver.links_info[link].n_dofs):
                                     i_d = self._solver.links_info[link].dof_end - 1 - i_d_
-                                    self.jac[n_con, i_d, i_b] = j[i_d, i_xyz]
+                                    self.jac[n_con, i_d, i_b] = j[i_xyz, i_d]
                                     self.jac_relevant_dofs[n_con, con_n_relevant_dofs, i_b] = i_d
                                     con_n_relevant_dofs += 1
                                 link = self._solver.links_info[link].parent_idx
@@ -465,6 +468,9 @@ class ConstraintSolver:
 
         if self._solver._enable_joint_limit:
             self.add_joint_limit_constraints()
+
+        if self._solver._enable_equality:
+            self.add_equality_constraints()
 
         # TODO: add equality constraints
         # pure copy from rigid entity to the data of this class
