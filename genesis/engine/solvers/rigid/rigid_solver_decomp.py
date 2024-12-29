@@ -2944,19 +2944,74 @@ class RigidSolver(Solver):
                         )
 
     @ti.func
+    def _func_link_jac(self, tensor, link_idx, batch_idx):
+        dof_start = self.entities_info[self.links_info[link_idx].entity_idx].dof_start
+        link_pos = self.links_state[link_idx, batch_idx].pos
+        i_l = link_idx
+        while i_l > -1:
+            l_info = self.links_info[i_l]
+            l_state = self.links_state[i_l, batch_idx]
+
+            if l_info.joint_type == gs.JOINT_TYPE.FIXED:
+                pass
+
+            elif l_info.joint_type == gs.JOINT_TYPE.REVOLUTE:
+                i_d = l_info.dof_start
+                i_d_jac = i_d - dof_start
+                rotation = gu.ti_transform_by_quat(self.dofs_info[i_d].motion_ang, l_state.quat)
+                translation = rotation.cross(link_pos - l_state.pos)
+
+                tensor[0, i_d_jac] = translation[0]
+                tensor[1, i_d_jac] = translation[1]
+                tensor[2, i_d_jac] = translation[2]
+                tensor[3, i_d_jac] = rotation[0]
+                tensor[4, i_d_jac] = rotation[1]
+                tensor[5, i_d_jac] = rotation[2]
+
+            elif l_info.joint_type == gs.JOINT_TYPE.PRISMATIC:
+                i_d = l_info.dof_start
+                i_d_jac = i_d - dof_start
+                translation = gu.ti_transform_by_quat(self.dofs_info[i_d].motion_vel, l_state.quat)
+
+                tensor[0, i_d_jac] = translation[0]
+                tensor[1, i_d_jac] = translation[1]
+                tensor[2, i_d_jac] = translation[2]
+
+            elif l_info.joint_type == gs.JOINT_TYPE.FREE:
+                # translation
+                for i_d_ in range(3):
+                    i_d = l_info.dof_start + i_d_
+                    i_d_jac = i_d - dof_start
+
+                    tensor[i_d_, i_d_jac] = 0.0
+
+                # rotation
+                for i_d_ in range(3):
+                    i_d = l_info.dof_start + i_d_ + 3
+                    i_d_jac = i_d - dof_start
+                    rotation = self.dofs_info[i_d].motion_ang
+                    translation = rotation.cross(link_pos - l_state.pos)
+
+                    tensor[0, i_d_jac] = translation[0]
+                    tensor[1, i_d_jac] = translation[1]
+                    tensor[2, i_d_jac] = translation[2]
+                    tensor[3, i_d_jac] = rotation[0]
+                    tensor[4, i_d_jac] = rotation[1]
+                    tensor[5, i_d_jac] = rotation[2]
+
+            i_l = l_info.parent_idx
+
+    @ti.func
     def _func_compute_link_jac(self):
-        ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.ALL)
-        for i, b in ti.ndrange(self.n_eqs, self._B):
-            l1id, l2id = self.eqs_info[i].link1_id, self.eqs_info[i].link2_id
-            dof_start1, dof_start2 = self.links_info[l1id].dof_start, self.links_info[l2id].dof_start
-            self._kernel_get_links_jac(
-                [self.eqs_state[i, b].link1_jac, self.eqs_state[i, b].link1_jac],
-                [l1id, l2id],
-                [self._scene._envs_idx, self._scene._envs_idx],
-                dof_starts=[dof_start1, dof_start2],
-            )
-            self.eqs_state[i, b].link1_jac = link1_jac
-            self.eqs_state[i, b].link2_jac = link2_jac
+        ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.PARTIAL)
+        for i_eq, i_b in ti.ndrange(self.n_eqs, self._B):
+            eq_info = self.eqs_info[i_eq]
+            eq_state = self.eqs_state[i_eq, i_b]
+            if eq_info.type == gs.EQ_TYPE.WELD or eq_info.type == gs.EQ_TYPE.CONNECT:
+                self._func_link_jac(eq_state.link1_jac, eq_info.link1_id, i_b)
+                self._func_link_jac(eq_state.link2_jac, eq_info.link2_id, i_b)
+            else:
+                pass
 
     def substep_pre_coupling(self, f):
         if self.is_active():
@@ -3248,6 +3303,52 @@ class RigidSolver(Solver):
                 gs.raise_exception("Expecting 2D input tensor.")
 
             return tensor, inputs_idx
+
+    def _validate_ND_io_variables(
+        self, tensor, inputs_idx, tensor_size, envs_idx=None, batched=True, idx_name="links_idx"
+    ):
+        inputs_idx = torch.as_tensor(inputs_idx, dtype=gs.tc_int, device=gs.device).contiguous()
+        if inputs_idx.ndim != 1:
+            gs.raise_exception(f"Expecting 1D tensor for `{idx_name}`.")
+
+        if tensor is not None:
+            tensor = torch.as_tensor(tensor, dtype=gs.tc_float, device=gs.device).contiguous()
+            if tensor.shape[-2] != len(inputs_idx):
+                gs.raise_exception(f"Second last dimension of the input tensor does not match length of `{idx_name}`.")
+            if tensor.shape[-1] != tensor_size:
+                gs.raise_exception(f"Last dimension of the input tensor must be {tensor_size}.")
+
+        else:
+            if batched and self.n_envs > 0:
+                tensor = torch.empty(
+                    self._batch_shape((len(inputs_idx), *tensor_size), True), dtype=gs.tc_float, device=gs.device
+                )
+            else:
+                tensor = torch.empty((len(inputs_idx), *tensor_size), dtype=gs.tc_float, device=gs.device)
+
+        if batched:
+            envs_idx = self._get_envs_idx(envs_idx)
+
+            if self.n_envs == 0:
+                if tensor.ndim == len(tensor_size):
+                    tensor = tensor[None, :]
+                else:
+                    gs.raise_exception(
+                        f"Invalid input shape: {tensor.shape}. Expecting a ND tensor for non-parallelized scene."
+                    )
+
+            else:
+                if tensor.ndim == len(tensor_size) + 1:
+                    if tensor.shape[0] != len(envs_idx):
+                        gs.raise_exception(
+                            f"Invalid input shape: {tensor.shape}. First dimension of the input tensor does not match length of `envs_idx` (or `scene.n_envs` if `envs_idx` is None)."
+                        )
+                else:
+                    gs.raise_exception(
+                        f"Invalid input shape: {tensor.shape}. Expecting a (N+1)D tensor for scene with parallelized envs."
+                    )
+
+            return tensor, inputs_idx, envs_idx
 
     def _get_qs_idx(self, qs_idx_local=None):
         return self._get_qs_idx_local(qs_idx_local) + self._q_start
