@@ -141,7 +141,7 @@ class ConstraintSolver:
                     n_con = ti.atomic_add(self.n_constraints[i_b], 1)
 
                     # Calculate impedance parameters using gu.imp_aref
-                    imp, aref = gu.imp_aref(eqs_info.sol_params, pos[i_xyz], jac_qvel)
+                    imp, aref = gu.imp_aref(eqs_info.sol_params, pos.norm(), jac_qvel)
                     diag = invweight * (1.0 - imp) / (imp + gs.EPS)
 
                     # Store constraint data
