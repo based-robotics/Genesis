@@ -180,23 +180,24 @@ class RigidEntity(Entity):
         )
 
         # Add equality constraint for fixed joints
-        if morph.fixed:
-            self._add_equality(
-                name=f"{link_name_prefix}_fixed",
-                type=gs.EQ_TYPE.WELD,
-                data=np.concatenate(
-                    [
-                        np.zeros(3),  # anchor1
-                        np.zeros(3),  # anchor2
-                        np.array([1, 0, 0, 0]),  # relpose quat
-                        np.array([1.0]),  # torquescale
-                    ]
-                ),
-                link1_id=link.idx,
-                link2_id=link.idx,
-                sol_params=gu.default_solver_params(n=1).ravel(),  # 6-DOF constraint
-                active0=True,
-            )
+        # TODO: return back later
+        # if morph.fixed:
+        #     self._add_equality(
+        #         name=f"{link_name_prefix}_fixed",
+        #         type=gs.EQ_TYPE.WELD,
+        #         data=np.concatenate(
+        #             [
+        #                 np.zeros(3),  # anchor1
+        #                 np.zeros(3),  # anchor2
+        #                 np.array([1, 0, 0, 0]),  # relpose quat
+        #                 np.array([1.0]),  # torquescale
+        #             ]
+        #         ),
+        #         link1_id=link.idx,
+        #         link2_id=link.idx,
+        #         sol_params=gu.default_solver_params(n=1).ravel(),  # 6-DOF constraint
+        #         active0=True,
+        #     )
 
         # TODO: add equality constraints
 
@@ -397,8 +398,7 @@ class RigidEntity(Entity):
                 if "sol_params" not in eq_info:
                     eq_info["sol_params"] = gu.default_solver_params(n=1)  # 1-DOF constraint by default
                 eq_infos.append(eq_info)
-
-        l_infos, j_infos, links_g_info = uu._order_links(l_infos, j_infos, links_g_info)
+        l_infos, j_infos, eq_infos, links_g_info = uu._order_links(l_infos, j_infos, eq_infos, links_g_info)
 
         # Add links and joints
         for i_l in range(len(l_infos)):

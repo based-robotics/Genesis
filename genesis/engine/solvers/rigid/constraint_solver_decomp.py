@@ -106,6 +106,7 @@ class ConstraintSolver:
 
             if eqs_info.type == gs.EQ_TYPE.CONNECT:
                 # Extract data and IDs
+                print(f"Parse connect equality b-n frames: {eqs_info.link1_id} and {eqs_info.link2_id}")
                 anchor1, anchor2 = eqs_info.data[0:3], eqs_info.data[3:6]
                 link1_id, link2_id = eqs_info.link1_id, eqs_info.link2_id
 

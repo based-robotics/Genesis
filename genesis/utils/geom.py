@@ -320,8 +320,8 @@ def imp_aref(params, pos, vel):
 
     b = 2 / (dmax * timeconst)
     k = 1 / (dmax * dmax * timeconst * timeconst * dampratio * dampratio)
-
     aref = -b * vel - k * imp * pos
+    print(f"    b: {b}, vel: {vel}, k: {k}, imp: {imp}, pos: {pos}, aref: {aref}")
 
     return imp, aref
 

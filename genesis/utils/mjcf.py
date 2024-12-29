@@ -381,8 +381,8 @@ def parse_constraints(mj, i_eq):
     info["active0"] = eq_view.active0
     info["data"] = eq_view.data
     info["name"] = eq_view.name
-    info["link1id"] = eq_view.obj1id[0]
-    info["link2id"] = eq_view.obj2id[0]
+    info["link1id"] = eq_view.obj1id[0] - 1
+    info["link2id"] = eq_view.obj2id[0] - 1
     info["type"] = eq_view.type
 
     # Combine solref and solimp into sol_params like other parsers

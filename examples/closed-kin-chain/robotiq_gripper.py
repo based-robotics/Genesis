@@ -48,7 +48,9 @@ def main():
 
     ########################## build ##########################
     scene.build()
-    for i in range(100000):
+    for i in range(len(scene.rigid_solver.links)):
+        print(f"Entity with id {scene.rigid_solver.links[i].idx}: {scene.rigid_solver.links[i].name}")
+    for i in range(100000000000):
         scene.step()
         print(scene.rigid_solver.constraint_solver.aref)
 

@@ -10,8 +10,10 @@ from . import mesh as mu
 from .misc import get_assets_dir
 
 
-def _order_links(l_infos, j_infos, links_g_info=None):
+def _order_links(l_infos, j_infos, eq_infos, links_g_info=None):
     # re-order links based on depth in the kinematic tree, so that parent links are always before child links
+    for eq_info in eq_infos:
+        print(f"Before ordering: {eq_info['link1id']}, {eq_info['link2id']}")
     n_links = len(l_infos)
     dict_child = {k: [] for k in range(n_links)}
     for lc in range(n_links):
@@ -39,6 +41,14 @@ def _order_links(l_infos, j_infos, links_g_info=None):
 
     ordered_links_idx = np.concatenate(ordered_links_idx).tolist()
 
+    print("-" * 50)
+    for eq_info in eq_infos:
+        if eq_info["link1id"] >= 0:
+            eq_info["link1id"] = ordered_links_idx.index(eq_info["link1id"])
+        if eq_info["link2id"] >= 0:
+            eq_info["link2id"] = ordered_links_idx.index(eq_info["link2id"])
+        print(f"After ordering: {eq_info['link1id']}, {eq_info['link2id']}")
+
     for l_info in l_infos:
         if l_info["parent_idx"] >= 0:  # non-base link
             l_info["parent_idx"] = ordered_links_idx.index(l_info["parent_idx"])
@@ -49,7 +59,7 @@ def _order_links(l_infos, j_infos, links_g_info=None):
     if links_g_info is not None:
         links_g_info = [links_g_info[i] for i in ordered_links_idx]
 
-    return new_l_infos, new_j_infos, links_g_info
+    return new_l_infos, new_j_infos, eq_infos, links_g_info
 
 
 def parse_urdf(morph, surface):
