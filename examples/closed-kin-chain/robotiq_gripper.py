@@ -14,7 +14,7 @@ def main():
     args = parser.parse_args()
 
     ########################## init ##########################
-    gs.init(backend=gs.gpu, debug=True)
+    gs.init(backend=gs.gpu)
 
     ########################## create a scene ##########################
     viewer_options = gs.options.ViewerOptions(
@@ -51,6 +51,7 @@ def main():
     for i in range(len(scene.rigid_solver.links)):
         print(f"Entity with id {scene.rigid_solver.links[i].idx}: {scene.rigid_solver.links[i].name}")
     for i in range(100000000000):
+        gripper.control_dofs_force(np.array([np.sin(i / 100), np.sin(i / 100)]), [2, 4])
         scene.step()
         print(scene.rigid_solver.constraint_solver.aref)
 
