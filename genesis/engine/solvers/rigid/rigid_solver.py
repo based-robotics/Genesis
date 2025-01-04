@@ -545,8 +545,6 @@ class RigidSolver(Solver):
             eq_solref=np.array([eq.solref for eq in self.eqs], dtype=gs.np_float),
             eq_solimp=np.array([eq.solimp for eq in self.eqs], dtype=gs.np_float),
             eq_data=np.array([eq.data for eq in self.eqs], dtype=gs.np_float),
-            link1_jac=np.array([eq.link1_jac for eq in self.eqs], dtype=gs.np_float),
-            link2_jac=np.array([eq.link2_jac for eq in self.eqs], dtype=gs.np_float),
         )
 
     @ti.kernel
@@ -558,8 +556,6 @@ class RigidSolver(Solver):
         eq_solref: ti.types.ndarray(),
         eq_solimp: ti.types.ndarray(),
         eq_data: ti.types.ndarray(),
-        eq_link1_jac: ti.types.ndarray(),
-        eq_link2_jac: ti.types.ndarray(),
     ):
         ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.PARTIAL)
         for i in range(self.n_eqs):
