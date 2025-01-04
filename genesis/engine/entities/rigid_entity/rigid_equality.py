@@ -34,8 +34,8 @@ class RigidEquality(RBC):
         self._data = np.array(data, dtype=gs.np_float)
         self._id = id
         self._name = name
-        self._link1id_local = link1id  # Store local ID
-        self._link2id_local = link2id  # Store local ID
+        self._link1id = link1id
+        self._link2id = link2id
         self._sol_params = np.array(sol_params, dtype=gs.np_float)
         self._type = EQ_TYPE(_type)
 
@@ -51,11 +51,11 @@ class RigidEquality(RBC):
 
     @gs.assert_built
     def link1_jac(self, envs_idx=None) -> np.ndarray:
-        return self._solver.get_links_jac([self._link1id], [envs_idx], dof_start=self._entity.dof_start)
+        return self._solver.get_links_jac([self.link1id], [envs_idx], dof_start=self._entity.dof_start)
 
     @gs.assert_built
     def link2_jac(self, envs_idx=None) -> np.ndarray:
-        return self._solver.get_links_jac([self._link2id], [envs_idx], dof_start=self._entity.dof_start)
+        return self._solver.get_links_jac([self.link2id], [envs_idx], dof_start=self._entity.dof_start)
 
     @property
     def dim(self):
@@ -87,22 +87,22 @@ class RigidEquality(RBC):
     @property
     def link1id_local(self):
         """Get first link's local ID within entity"""
-        return self._link1id_local
+        return self._link1id - self._entity._link_start
 
     @property
     def link2id_local(self):
         """Get second link's local ID within entity"""
-        return self._link2id_local
+        return self._link2id - self._entity._link_start
 
     @property
     def link1id(self):
         """Get first link's global ID in solver"""
-        return self._link1id_local + self._entity.base_link_idx
+        return self._link1id
 
     @property
     def link2id(self):
         """Get second link's global ID in solver"""
-        return self._link2id_local + self._entity.base_link_idx
+        return self._link2id
 
     @property
     def uid(self) -> gs.UID:

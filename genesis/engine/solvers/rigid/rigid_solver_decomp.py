@@ -1048,7 +1048,6 @@ class RigidSolver(Solver):
         self.collider = Collider(self)
 
         if self.collider._has_terrain:
-
             links_idx = self.geoms_info.link_idx.to_numpy()[self.geoms_info.type.to_numpy() == gs.GEOM_TYPE.TERRAIN]
             entity = self._entities[self.links_info.entity_idx.to_numpy()[links_idx[0]]]
 
@@ -1164,7 +1163,6 @@ class RigidSolver(Solver):
                 # qDeriv += d qfrc_actuator / d qvel
                 ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.ALL)
                 for i_d, i_b in ti.ndrange(self.n_dofs, self._B):
-
                     if self.dofs_state[i_d, i_b].ctrl_mode == gs.CTRL_MODE.FORCE:
                         pass
 
@@ -1247,7 +1245,6 @@ class RigidSolver(Solver):
                 # qDeriv += d qfrc_actuator / d qvel
                 ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.ALL)
                 for i_d, i_b in ti.ndrange(self.n_dofs, self._B):
-
                     if self.dofs_state[i_d, i_b].ctrl_mode == gs.CTRL_MODE.FORCE:
                         pass
 
@@ -1407,7 +1404,6 @@ class RigidSolver(Solver):
         # TODO: hibernate
         ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.ALL)
         for i_d, i_b in ti.ndrange(self.n_dofs, self._B):
-
             if self.dofs_state[i_d, i_b].ctrl_mode == gs.CTRL_MODE.FORCE:
                 pass
 
@@ -1701,14 +1697,12 @@ class RigidSolver(Solver):
             ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.ALL)
             for i_b in range(self._B):
                 for i_l in range(self.n_links):
-
                     self.links_state[i_l, i_b].root_COM = ti.Vector.zero(gs.ti_float, 3)
                     self.links_state[i_l, i_b].mass_sum = 0.0
 
             ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.ALL)
             for i_b in range(self._B):
                 for i_l in range(self.n_links):
-
                     l = self.links_state[i_l, i_b]
                     l_info = self.links_info[i_l]
                     mass = l_info.inertial_mass + l.mass_shift
@@ -1727,7 +1721,6 @@ class RigidSolver(Solver):
             ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.ALL)
             for i_b in range(self._B):
                 for i_l in range(self.n_links):
-
                     i_r = self.links_info[i_l].root_idx
                     if i_l == i_r:
                         self.links_state[i_l, i_b].root_COM = (
@@ -1737,14 +1730,12 @@ class RigidSolver(Solver):
             ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.ALL)
             for i_b in range(self._B):
                 for i_l in range(self.n_links):
-
                     i_r = self.links_info[i_l].root_idx
                     self.links_state[i_l, i_b].root_COM = self.links_state[i_r, i_b].root_COM
 
             ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.ALL)
             for i_b in range(self._B):
                 for i_l in range(self.n_links):
-
                     l = self.links_state[i_l, i_b]
                     l_info = self.links_info[i_l]
 
@@ -1766,7 +1757,6 @@ class RigidSolver(Solver):
             ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.ALL)
             for i_b in range(self._B):
                 for i_l in range(self.n_links):
-
                     l_info = self.links_info[i_l]
                     i_p = l_info.parent_idx
 
@@ -1798,7 +1788,6 @@ class RigidSolver(Solver):
             ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.ALL)
             for i_b in range(self._B):
                 for i_l in range(self.n_links):
-
                     l_info = self.links_info[i_l]
 
                     if l_info.joint_type == gs.JOINT_TYPE.FREE:
@@ -1887,7 +1876,6 @@ class RigidSolver(Solver):
         else:
             ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.PARTIAL)
             for i_e, i_b in ti.ndrange(self.n_entities, self._B):
-
                 e_info = self.entities_info[i_e]
                 for i_l in range(e_info.link_start, e_info.link_end):
                     l_info = self.links_info[i_l]
@@ -1958,7 +1946,6 @@ class RigidSolver(Solver):
             ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.ALL)
             for i_b in range(self._B):
                 for i_l in range(self.n_links):
-
                     l_info = self.links_info[i_l]
 
                     if l_info.joint_type == gs.JOINT_TYPE.FREE:
@@ -2024,7 +2011,6 @@ class RigidSolver(Solver):
             l_info = self.links_info[i_l]
 
             if l_info.joint_type == gs.JOINT_TYPE.FREE:
-
                 for i_q in ti.static(range(3)):
                     self.links_state[i_l, i_b].j_pos[i_q] = self.qpos[i_q + l_info.q_start, i_b]
                     self.links_state[i_l, i_b].j_ang[i_q] = self.dofs_state[i_q + 3 + l_info.dof_start, i_b].vel
@@ -2145,7 +2131,6 @@ class RigidSolver(Solver):
         else:
             ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.PARTIAL)
             for i_g, i_b in ti.ndrange(self.n_geoms, self._B):
-
                 g_info = self.geoms_info[i_g]
 
                 l_state = self.links_state[g_info.link_idx, i_b]
@@ -2247,12 +2232,12 @@ class RigidSolver(Solver):
                 else:
                     # update collider sort_buffer
                     for i_g in range(self.entities_info[i_e].geom_start, self.entities_info[i_e].geom_end):
-                        self.collider.sort_buffer[self.geoms_state[i_g, i_b].min_buffer_idx, i_b].value = (
-                            self.geoms_state[i_g, i_b].aabb_min[0]
-                        )
-                        self.collider.sort_buffer[self.geoms_state[i_g, i_b].max_buffer_idx, i_b].value = (
-                            self.geoms_state[i_g, i_b].aabb_max[0]
-                        )
+                        self.collider.sort_buffer[
+                            self.geoms_state[i_g, i_b].min_buffer_idx, i_b
+                        ].value = self.geoms_state[i_g, i_b].aabb_min[0]
+                        self.collider.sort_buffer[
+                            self.geoms_state[i_g, i_b].max_buffer_idx, i_b
+                        ].value = self.geoms_state[i_g, i_b].aabb_max[0]
 
     @ti.func
     def _func_aggregate_awake_entities(self):
@@ -2294,7 +2279,6 @@ class RigidSolver(Solver):
     @ti.func
     def _func_wakeup_entity(self, i_e, i_b):
         if self.entities_state[i_e, i_b].hibernated:
-
             self.entities_state[i_e, i_b].hibernated = False
             n_awake_entities = ti.atomic_add(self.n_awake_entities[i_b], 1)
             self.awake_entities[n_awake_entities, i_b] = i_e
@@ -2438,7 +2422,6 @@ class RigidSolver(Solver):
                     or self.dofs_state[ds + 4, i_b].ctrl_mode == gs.CTRL_MODE.POSITION
                     or self.dofs_state[ds + 5, i_b].ctrl_mode == gs.CTRL_MODE.POSITION
                 ):
-
                     xyz = ti.Vector(
                         [
                             self.dofs_state[0 + 3 + l_info.dof_start, i_b].pos,
@@ -2538,7 +2521,6 @@ class RigidSolver(Solver):
                     i_e = self.awake_entities[i_e_, i_b]
                     e_info = self.entities_info[i_e]
                     for i_l in range(e_info.link_start, e_info.link_end):
-
                         i_p = self.links_info[i_l].parent_idx
                         if i_p == -1:
                             self.links_state[i_l, i_b].cdd_vel = -self._gravity[None] * (
@@ -2568,7 +2550,6 @@ class RigidSolver(Solver):
             for i_e, i_b in ti.ndrange(self.n_entities, self._B):
                 e_info = self.entities_info[i_e]
                 for i_l in range(e_info.link_start, e_info.link_end):
-
                     i_p = self.links_info[i_l].parent_idx
                     if i_p == -1:
                         self.links_state[i_l, i_b].cdd_vel = -self._gravity[None] * (1 - e_info.gravity_compensation)
@@ -2721,7 +2702,6 @@ class RigidSolver(Solver):
         else:
             ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.ALL)
             for i_l, i_b in ti.ndrange(self.n_links, self._B):
-
                 l_info = self.links_info[i_l]
                 dof_start = l_info.dof_start
                 dof_end = l_info.dof_end
@@ -2947,8 +2927,7 @@ class RigidSolver(Solver):
     def _func_link_jac(self, tensor: ti.template(), link_idx: int, batch_idx: int):
         dof_start = self.entities_info[self.links_info[link_idx].entity_idx].dof_start
         link_pos = self.links_state[link_idx, batch_idx].pos
-        i_l = self.links_info[link_idx].parent_idx
-        R = gu.ti_quat_to_R(self.links_info[i_l].quat)
+        i_l = link_idx  # self.links_info[link_idx].parent_idx
         while i_l > -1:
             l_info = self.links_info[i_l]
             l_state = self.links_state[i_l, batch_idx]
@@ -2977,7 +2956,6 @@ class RigidSolver(Solver):
                 tensor[0, i_d_jac] = translation[0]
                 tensor[1, i_d_jac] = translation[1]
                 tensor[2, i_d_jac] = translation[2]
-
             elif l_info.joint_type == gs.JOINT_TYPE.FREE:
                 # translation
                 for i_d_ in range(3):
@@ -3004,7 +2982,7 @@ class RigidSolver(Solver):
 
     @ti.func
     def _func_compute_link_jac(self):
-        ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.PARTIAL)
+        ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.NEVER)
         for i_eq, i_b in ti.ndrange(self.n_eqs, self._B):
             eq_info = self.eqs_info[i_eq]
 
@@ -3373,63 +3351,7 @@ class RigidSolver(Solver):
         dof_starts: ti.types.ndarray(),
         envs_idx: ti.types.ndarray(),
     ):
-        ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.PARTIAL)
-        for i_l_, i_b_ in ti.ndrange(links_idx.shape[0], envs_idx.shape[0]):
-            i_l = links_idx[i_l_]
-            dof_start = dof_starts[i_l]
-            tgt_link_pos = self.links_state[i_l, i_b_].pos
-            while i_l > -1:
-                l_info = self.links_info[i_l]
-                l_state = self.links_state[i_l, i_b_]
-
-                if l_info.joint_type == gs.JOINT_TYPE.FIXED:
-                    pass
-
-                elif l_info.joint_type == gs.JOINT_TYPE.REVOLUTE:
-                    i_d = l_info.dof_start
-                    i_d_jac = i_d - dof_start
-                    rotation = gu.ti_transform_by_quat(self.dofs_info[i_d].motion_ang, l_state.quat)
-                    translation = rotation.cross(tgt_link_pos - l_state.pos)
-
-                    tensor[0, i_d_jac, i_b_] = translation[0]
-                    tensor[1, i_d_jac, i_b_] = translation[1]
-                    tensor[2, i_d_jac, i_b_] = translation[2]
-                    tensor[3, i_d_jac, i_b_] = rotation[0]
-                    tensor[4, i_d_jac, i_b_] = rotation[1]
-                    tensor[5, i_d_jac, i_b_] = rotation[2]
-
-                elif l_info.joint_type == gs.JOINT_TYPE.PRISMATIC:
-                    i_d = l_info.dof_start
-                    i_d_jac = i_d - dof_start
-                    translation = gu.ti_transform_by_quat(self.dofs_info[i_d].motion_vel, l_state.quat)
-
-                    tensor[0, i_d_jac, i_b_] = translation[0]
-                    tensor[1, i_d_jac, i_b_] = translation[1]
-                    tensor[2, i_d_jac, i_b_] = translation[2]
-
-                elif l_info.joint_type == gs.JOINT_TYPE.FREE:
-                    # translation
-                    for i_d_ in range(3):
-                        i_d = l_info.dof_start + i_d_
-                        i_d_jac = i_d - dof_start
-
-                        tensor[i_d_, i_d_jac, i_b_] = 1.0
-
-                    # rotation
-                    for i_d_ in range(3):
-                        i_d = l_info.dof_start + i_d_ + 3
-                        i_d_jac = i_d - dof_start
-                        rotation = self.dofs_info[i_d].motion_ang
-                        translation = rotation.cross(tgt_link_pos - l_state.pos)
-
-                        tensor[0, i_d_jac, i_b_] = translation[0]
-                        tensor[1, i_d_jac, i_b_] = translation[1]
-                        tensor[2, i_d_jac, i_b_] = translation[2]
-                        tensor[3, i_d_jac, i_b_] = rotation[0]
-                        tensor[4, i_d_jac, i_b_] = rotation[1]
-                        tensor[5, i_d_jac, i_b_] = rotation[2]
-
-                i_l = l_info.parent_idx
+        pass
 
     def set_links_pos(self, pos, links_idx, envs_idx=None):
         """
@@ -3483,7 +3405,6 @@ class RigidSolver(Solver):
         links_idx: ti.types.ndarray(),
         envs_idx: ti.types.ndarray(),
     ):
-
         ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.PARTIAL)
         for i_l_, i_b_ in ti.ndrange(links_idx.shape[0], envs_idx.shape[0]):
             i_l = links_idx[i_l_]

@@ -640,6 +640,7 @@ class RigidEntity(Entity):
         dofs_force_range,
         init_qpos,
     ):
+        print(f"Joint {name} has init_qpos: {self.n_dofs + self._dof_start}")
         joint = RigidJoint(
             entity=self,
             name=name,
@@ -688,9 +689,9 @@ class RigidEntity(Entity):
         data : array_like
             Constraint-specific data
         link1_id : int
-            ID of first link (local ID within entity)
+            ID of first link (global ID within entity)
         link2_id : int
-            ID of second link (local ID within entity)
+            ID of second link (global ID within entity)
         sol_params : array_like
             Solver parameters for impedance calculation
         active0 : bool, optional
@@ -702,8 +703,8 @@ class RigidEntity(Entity):
             data=data,
             id=self.n_eqs,
             name=name,
-            link1id=link1_id,  # Keep local ID
-            link2id=link2_id,  # Keep local ID
+            link1id=link1_id + self._link_start,
+            link2id=link2_id + self._link_start,
             sol_params=sol_params,
             _type=type,
         )
@@ -1944,7 +1945,7 @@ class RigidEntity(Entity):
         envs_idx : None | array_like, optional
             The indices of the environments. If None, all environments will be considered. Defaults to None.
         """
-
+        print(self._get_dofs_idx(dofs_idx_local))
         self._solver.control_dofs_position(position, self._get_dofs_idx(dofs_idx_local), envs_idx)
 
     @gs.assert_built

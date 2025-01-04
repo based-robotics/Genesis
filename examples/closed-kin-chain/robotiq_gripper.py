@@ -15,7 +15,7 @@ def main():
     args = parser.parse_args()
 
     ########################## init ##########################
-    gs.init(backend=gs.gpu, debug=args.debug)
+    gs.init(backend=gs.cpu, debug=args.debug)
 
     ########################## create a scene ##########################
     viewer_options = gs.options.ViewerOptions(
@@ -56,7 +56,7 @@ def main():
     j2_id = gripper.get_joint("right_driver_joint").dof_start
 
     for i in range(100000000000):
-        gripper.control_dofs_force(np.array([-np.sin(i / 10) * 20, np.sin(i / 10) * 20]), [j1_id, j2_id])
+        gripper.control_dofs_force(np.array([-np.sin(i / 20) * 30, np.sin(i / 20) * 30]), [j1_id, j2_id])
         scene.step()
 
 

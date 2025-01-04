@@ -100,13 +100,13 @@ class ConstraintSolver:
 
     @ti.kernel
     def add_equality_constraints(self):
-        ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.PARTIAL)
+        ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.ALL)
         for i_eq, i_b in ti.ndrange(self._solver.n_eqs, self._B):
             eqs_info = self._solver.eqs_info[i_eq]
 
             if eqs_info.type == gs.EQ_TYPE.CONNECT:
                 # Extract data and IDs
-                print(f"Parse connect equality b-n frames: {eqs_info.link1_id} and {eqs_info.link2_id}")
+                # print(f"Parse connect equality b-n frames: {eqs_info.link1_id} and {eqs_info.link2_id}")
                 anchor1, anchor2 = eqs_info.data[0:3], eqs_info.data[3:6]
                 link1_id, link2_id = eqs_info.link1_id, eqs_info.link2_id
 
@@ -127,6 +127,7 @@ class ConstraintSolver:
                 j = jac_b1 - jac_b2
 
                 # Add constraint for each position component
+                print("b1")
                 for i_xyz in range(3):
                     # Calculate velocity for impedance
                     jac_qvel = gs.ti_float(0.0)
@@ -168,10 +169,12 @@ class ConstraintSolver:
                     else:
                         for i_d in range(self._solver.n_dofs):
                             self.jac[n_con, i_d, i_b] = j[i_xyz, i_d]
+                print("b2")
                 for i_xyz in range(3):
                     for i_d in range(self._solver.n_dofs):
                         print(jac_b2[i_xyz, i_d], end=" ")
                     print()
+                print("-" * 100)
 
     @ti.kernel
     def add_collision_constraints(self):
@@ -219,7 +222,6 @@ class ConstraintSolver:
                             link = link_b
 
                         while link > -1:
-
                             # reverse order to make sure dofs in each row of self.jac_relevant_dofs is strictly descending
                             for i_d_ in range(self._solver.links_info[link].n_dofs):
                                 i_d = self._solver.links_info[link].dof_end - 1 - i_d_
@@ -261,7 +263,6 @@ class ConstraintSolver:
             for i_l in range(self._solver.n_links):
                 l_info = self._solver.links_info[i_l]
                 if l_info.joint_type == gs.JOINT_TYPE.REVOLUTE or l_info.joint_type == gs.JOINT_TYPE.PRISMATIC:
-
                     i_q = l_info.q_start
                     i_d = l_info.dof_start
                     pos_min = self._solver.qpos[i_q, i_b] - self._solver.dofs_info[i_d].limit[0]
@@ -470,7 +471,6 @@ class ConstraintSolver:
             self.jac_n_relevant_dofs.fill(0)
 
     def handle_constraints(self):
-
         if self._solver._enable_collision:
             self.add_collision_constraints()
 
@@ -598,7 +598,6 @@ class ConstraintSolver:
             )
             quad_gauss_2 += 0.5 * self.search[i_d, i_b] * self.mv[i_d, i_b]
         for _i0 in range(1):
-
             self.quad_gauss[_i0 + 0, i_b] = self.gauss[i_b]
             self.quad_gauss[_i0 + 1, i_b] = quad_gauss_1
             self.quad_gauss[_i0 + 2, i_b] = quad_gauss_2
@@ -648,7 +647,6 @@ class ConstraintSolver:
 
     @ti.func
     def _func_linesearch(self, i_b):
-
         ## use adaptive linesearch tolerance
         snorm = gs.ti_float(0.0)
         for jd in range(self._solver.n_dofs):
@@ -706,7 +704,6 @@ class ConstraintSolver:
                         done = True
                         break
                 if not done:
-
                     if self.ls_its[i_b] >= self.ls_iterations:
                         self.ls_result[i_b] = 3
                         ls_slope = ti.abs(p1_deriv_0) * slopescl
@@ -720,7 +717,6 @@ class ConstraintSolver:
                         done = True
 
                     if not done:
-
                         p2_next_alpha, p2_next_cost, p2_next_deriv_0, p2_next_deriv_1 = (
                             p1_alpha,
                             p1_cost,
@@ -733,7 +729,6 @@ class ConstraintSolver:
                         )
 
                         while self.ls_its[i_b] < self.ls_iterations:
-
                             pmid_alpha, pmid_cost, pmid_deriv_0, pmid_deriv_1 = self._func_ls_point_fn(
                                 i_b, (p1_alpha + p2_alpha) * 0.5
                             )
@@ -773,7 +768,6 @@ class ConstraintSolver:
                                 res_alpha = self.candidates[4 * best_i + 0, i_b]
                                 done = True
                             else:
-
                                 (
                                     b1,
                                     p1_alpha,
@@ -809,7 +803,6 @@ class ConstraintSolver:
                                     done = True
 
                         if not done:
-
                             if p1_cost <= p2_cost and p1_cost < p0_cost:
                                 self.ls_result[i_b] = 4
                                 ls_slope = ti.abs(p1_deriv_0) * slopescl
@@ -985,7 +978,6 @@ class ConstraintSolver:
     def initialize_Ma(self, Ma, qacc):
         ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.PARTIAL)
         for i_e, i_d1_, i_b in ti.ndrange(self._solver.n_entities, self._solver.entity_max_dofs, self._B):
-
             e_info = self._solver.entities_info[i_e]
             if i_d1_ < e_info.n_dofs:
                 i_d1 = e_info.dof_start + i_d1_

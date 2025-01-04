@@ -12,7 +12,7 @@ import genesis.engine.entities as gsen
 
 
 def main():
-    gripper_path = "mujoco_menagerie/robotiq_2f85_v4/scene.xml"
+    gripper_path = "mujoco_menagerie/robotiq_2f85_v4/2f85.xml"
     mj_model = mj.MjModel.from_xml_path(gripper_path)
 
     mj_data = mj.MjData(mj_model)
@@ -54,8 +54,8 @@ def main():
 
     jacp1, jacr1 = np.zeros((3, mj_model.nv)), np.zeros((3, mj_model.nv))
     jacp2, jacr2 = np.zeros((3, mj_model.nv)), np.zeros((3, mj_model.nv))
-    for i in range(1):
-        id1, id2 = mj_model.eq_obj1id[0], mj_model.eq_obj2id[0]
+    for i in range(2):
+        id1, id2 = mj_model.eq_obj1id[i], mj_model.eq_obj2id[i]
         print(id1, id2)
         print(
             mj.mj_id2name(mj_model, mj.mjtObj.mjOBJ_BODY, id1),
@@ -69,6 +69,7 @@ def main():
             print(jacp1)
             print("b2")
             print(jacp2)
+        print("-" * 100)
     print("genesis:")
     scene.step()
 
