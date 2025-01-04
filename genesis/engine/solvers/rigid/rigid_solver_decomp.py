@@ -108,7 +108,7 @@ class RigidSolver(Solver):
         self._n_vfaces = self.n_vfaces
         self._n_vverts = self.n_vverts
         self._n_entities = self.n_entities
-        self._n_eqs = self.n_eqs  # Add equality constraints counn_eqst
+        self._n_eqs = self.n_eqs  # Add equality constraints count_eqs
         self._n_eq_dofs = self.n_eq_dofs  # Add equality DOFs count
 
         self._geoms = self.geoms
@@ -572,18 +572,19 @@ class RigidSolver(Solver):
             link2_jac=ti.types.matrix(6, self.n_dofs, dtype=gs.ti_float),
         )
 
-        self.eqs_info = struct_eq_info.field(shape=self.n_eqs, needs_grad=False, layout=ti.Layout.SOA)
+        self.eqs_info = struct_eq_info.field(shape=self.n_eqs_, needs_grad=False, layout=ti.Layout.SOA)
         self.eqs_state = struct_eq_state.field(
-            shape=self._batch_shape(self.n_links),
+            shape=self._batch_shape(self.n_eqs_),
             needs_grad=False,
             layout=ti.Layout.SOA,
         )
+        print(self.n_eqs)
         self._kernel_init_eq_fields(
-            eq_type=np.array([eq.type.value for eq in self.eqs], dtype=gs.np_int),
-            eq_link1_id=np.array([eq.link1id for eq in self.eqs], dtype=gs.np_int),
-            eq_link2_id=np.array([eq.link2id for eq in self.eqs], dtype=gs.np_int),
-            eq_sol_params=np.array([eq.sol_params for eq in self.eqs], dtype=gs.np_float),
-            eq_data=np.array([eq.data for eq in self.eqs], dtype=gs.np_float),
+            eq_type=np.array([self.eqs[i].type.value for i in range(self.n_eqs)], dtype=gs.np_int),
+            eq_link1_id=np.array([self.eqs[i].link1_id.value for i in range(self.n_eqs)], dtype=gs.np_int),
+            eq_link2_id=np.array([self.eqs[i].link2_id.value for i in range(self.n_eqs)], dtype=gs.np_int),
+            eq_sol_params=np.array([self.eqs[i].sol_params.value for i in range(self.n_eqs)], dtype=gs.np_int),
+            eq_data=np.array([self.eqs[i].data.value for i in range(self.n_eqs)], dtype=gs.np_int),
         )
 
     @ti.kernel
@@ -596,7 +597,7 @@ class RigidSolver(Solver):
         eq_data: ti.types.ndarray(),
     ):
         ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.PARTIAL)
-        for i in range(self.n_eqs):
+        for i in ti.static(range(self.n_eqs)):
             self.eqs_info[i].type = eq_type[i]
             self.eqs_info[i].link1_id = eq_link1_id[i]
             self.eqs_info[i].link2_id = eq_link2_id[i]
@@ -2947,7 +2948,8 @@ class RigidSolver(Solver):
     def _func_link_jac(self, tensor: ti.template(), link_idx: int, batch_idx: int):
         dof_start = self.entities_info[self.links_info[link_idx].entity_idx].dof_start
         link_pos = self.links_state[link_idx, batch_idx].pos
-        i_l = link_idx
+        i_l = self.links_info[link_idx].parent_idx
+        R = gu.ti_quat_to_R(self.links_info[i_l].quat)
         while i_l > -1:
             l_info = self.links_info[i_l]
             l_state = self.links_state[i_l, batch_idx]
