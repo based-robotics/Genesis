@@ -578,13 +578,12 @@ class RigidSolver(Solver):
             needs_grad=False,
             layout=ti.Layout.SOA,
         )
-        print(self.n_eqs)
         self._kernel_init_eq_fields(
-            eq_type=np.array([self.eqs[i].type.value for i in range(self.n_eqs)], dtype=gs.np_int),
-            eq_link1_id=np.array([self.eqs[i].link1_id.value for i in range(self.n_eqs)], dtype=gs.np_int),
-            eq_link2_id=np.array([self.eqs[i].link2_id.value for i in range(self.n_eqs)], dtype=gs.np_int),
-            eq_sol_params=np.array([self.eqs[i].sol_params.value for i in range(self.n_eqs)], dtype=gs.np_int),
-            eq_data=np.array([self.eqs[i].data.value for i in range(self.n_eqs)], dtype=gs.np_int),
+            eq_type=np.array([eq.type.value for eq in self.eqs], dtype=gs.np_int),
+            eq_link1_id=np.array([eq.link1id for eq in self.eqs], dtype=gs.np_int),
+            eq_link2_id=np.array([eq.link2id for eq in self.eqs], dtype=gs.np_int),
+            eq_sol_params=np.array([eq.sol_params for eq in self.eqs], dtype=gs.np_float),
+            eq_data=np.array([eq.data for eq in self.eqs], dtype=gs.np_float),
         )
 
     @ti.kernel
