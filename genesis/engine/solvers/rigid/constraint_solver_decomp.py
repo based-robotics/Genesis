@@ -131,7 +131,9 @@ class ConstraintSolver:
                     # Calculate velocity for impedance
                     jac_qvel = gs.ti_float(0.0)
                     for i_d in range(self._solver.n_dofs):
+                        print(jac_b1[i_xyz, i_d], end=" ")
                         jac_qvel += j[i_xyz, i_d] * self._solver.dofs_state[i_d, i_b].vel
+                    print()
 
                     # Calculate impedance and inverse weight
                     invweight = (
@@ -141,7 +143,7 @@ class ConstraintSolver:
                     n_con = ti.atomic_add(self.n_constraints[i_b], 1)
 
                     # Calculate impedance parameters using gu.imp_aref
-                    imp, aref = gu.imp_aref(eqs_info.sol_params, pos.norm(), jac_qvel)
+                    imp, aref = gu.imp_aref(eqs_info.sol_params, pos[i_xyz], jac_qvel, pos.norm())
                     diag = invweight * (1.0 - imp) / (imp + gs.EPS)
 
                     # Store constraint data
@@ -152,7 +154,8 @@ class ConstraintSolver:
                     # Store Jacobian row
                     if ti.static(self.sparse_solve):
                         con_n_relevant_dofs = 0
-                        for link_id in (link1_id, link2_id):
+                        for link_idx in range(2):
+                            link_id = link1_id if link_idx == 0 else link2_id
                             link = link_id
                             while link > -1:
                                 for i_d_ in range(self._solver.links_info[link].n_dofs):
@@ -165,6 +168,10 @@ class ConstraintSolver:
                     else:
                         for i_d in range(self._solver.n_dofs):
                             self.jac[n_con, i_d, i_b] = j[i_xyz, i_d]
+                for i_xyz in range(3):
+                    for i_d in range(self._solver.n_dofs):
+                        print(jac_b2[i_xyz, i_d], end=" ")
+                    print()
 
     @ti.kernel
     def add_collision_constraints(self):
@@ -237,7 +244,7 @@ class ConstraintSolver:
 
                     if ti.static(self.sparse_solve):
                         self.jac_n_relevant_dofs[n_con, i_b] = con_n_relevant_dofs
-                    imp, aref = gu.imp_aref(impact.sol_params, -impact.penetration, jac_qvel)
+                    imp, aref = gu.imp_aref(impact.sol_params, -impact.penetration, jac_qvel, -impact.penetration)
 
                     diag = t + impact.friction * impact.friction * t
                     diag *= 2 * impact.friction * impact.friction * (1 - imp) / ti.max(imp, gs.EPS)
@@ -265,7 +272,7 @@ class ConstraintSolver:
 
                     jac = side
                     jac_qvel = jac * self._solver.dofs_state[i_d, i_b].vel
-                    imp, aref = gu.imp_aref(self._solver.dofs_info[i_d].sol_params, pos, jac_qvel)
+                    imp, aref = gu.imp_aref(self._solver.dofs_info[i_d].sol_params, pos, jac_qvel, pos)
                     diag = self._solver.dofs_info[i_d].invweight * (pos < 0) * (1 - imp) / (imp + gs.EPS)
                     aref = aref * (pos < 0)
                     if pos < 0:
