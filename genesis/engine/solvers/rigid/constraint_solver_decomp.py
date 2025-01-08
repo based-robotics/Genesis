@@ -102,13 +102,14 @@ class ConstraintSolver:
     def add_equality_constraints(self):
         ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.ALL)
         for i_eq, i_b in ti.ndrange(self._solver.n_eqs, self._B):
-            eqs_info = self._solver.eqs_info[i_eq]
+            eq_info = self._solver.eqs_info[i_eq]
+            print(f"Constraint #{i_eq}")
 
-            if eqs_info.type == gs.EQ_TYPE.CONNECT:
+            if eq_info.type == gs.EQ_TYPE.CONNECT:
                 # Extract data and IDs
                 # print(f"Parse connect equality b-n frames: {eqs_info.link1_id} and {eqs_info.link2_id}")
-                anchor1, anchor2 = eqs_info.data[0:3], eqs_info.data[3:6]
-                link1_id, link2_id = eqs_info.link1_id, eqs_info.link2_id
+                anchor1, anchor2 = eq_info.data[0:3], eq_info.data[3:6]
+                link1_id, link2_id = eq_info.link1_id, eq_info.link2_id
 
                 # Get global positions of anchor points
                 p_b1 = self._solver.links_state[link1_id, i_b].pos
@@ -124,27 +125,36 @@ class ConstraintSolver:
                 # Get Jacobians
                 jac_b1 = self._solver.eqs_state[i_eq, i_b].link1_jac
                 jac_b2 = self._solver.eqs_state[i_eq, i_b].link2_jac
+                # Transform it by the relative position
+                jac_b1[:3, :] = jac_b1[:3, :] + gu.skew_symmetric(R_b1 @ anchor1).transpose() @ jac_b1[3:, :]
+                jac_b2[:3, :] = jac_b2[:3, :] + gu.skew_symmetric(R_b2 @ anchor2).transpose() @ jac_b2[3:, :]
+
+                print("     Jac1=[", end="")
+                for i_xyz in range(3):
+                    print("\n       ", end="")
+                    for i_d in range(self._solver.n_dofs):
+                        print(f"{jac_b1[i_xyz, i_d]}", end=" ")
+                print("\n     ]")
+                print("     Jac2=[", end="")
+                for i_xyz in range(3):
+                    print("\n       ", end="")
+                    for i_d in range(self._solver.n_dofs):
+                        print(f"{jac_b2[i_xyz, i_d]}", end=" ")
+                print("\n     ]")
                 j = jac_b1 - jac_b2
 
+                invweight = self._solver.links_info[link1_id].invweight + self._solver.links_info[link2_id].invweight
                 # Add constraint for each position component
-                print("b1")
                 for i_xyz in range(3):
                     # Calculate velocity for impedance
                     jac_qvel = gs.ti_float(0.0)
                     for i_d in range(self._solver.n_dofs):
-                        print(jac_b1[i_xyz, i_d], end=" ")
                         jac_qvel += j[i_xyz, i_d] * self._solver.dofs_state[i_d, i_b].vel
-                    print()
-
-                    # Calculate impedance and inverse weight
-                    invweight = (
-                        self._solver.links_info[link1_id].invweight + self._solver.links_info[link2_id].invweight
-                    )
 
                     n_con = ti.atomic_add(self.n_constraints[i_b], 1)
 
                     # Calculate impedance parameters using gu.imp_aref
-                    imp, aref = gu.imp_aref(eqs_info.sol_params, pos[i_xyz], jac_qvel, pos.norm())
+                    imp, aref = gu.imp_aref(eq_info.sol_params, pos[i_xyz], jac_qvel, pos.norm())
                     diag = invweight * (1.0 - imp) / (imp + gs.EPS)
 
                     # Store constraint data
@@ -169,12 +179,32 @@ class ConstraintSolver:
                     else:
                         for i_d in range(self._solver.n_dofs):
                             self.jac[n_con, i_d, i_b] = j[i_xyz, i_d]
-                print("b2")
-                for i_xyz in range(3):
-                    for i_d in range(self._solver.n_dofs):
-                        print(jac_b2[i_xyz, i_d], end=" ")
-                    print()
-                print("-" * 100)
+                print(f"    Anchor1: {pos1}")
+                print(f"    Anchor2: {pos2}")
+            n_con = self.n_constraints[i_b]
+            # print("     Diag=[", end="")
+            # for i_xyz in range(3):
+            #     idx = n_con - 3 + i_xyz
+            #     print(f"{self.diag[idx, 0]}", end=" ")
+            # print("]")
+            # print("     aref=[", end="")
+            # for i_xyz in range(3):
+            #     idx = n_con - 3 + i_xyz
+            #     print(f"{self.aref[idx, 0]}", end=" ")
+            # print("]")
+            # print("     efc_D=[", end="")
+            # for i_xyz in range(3):
+            #     idx = n_con - 3 + i_xyz
+            #     print(f"{self.efc_D[idx, 0]}", end=" ")
+            # print("]")
+            # print("     Jac1=[", end="")
+            # for i_xyz in range(3):
+            #     print("\n       ", end="")
+            #     idx = n_con - 3 + i_xyz
+            #     for i_d in range(self._solver.n_dofs):
+            #         print(f"{self.jac[idx, i_d, 0]}", end=" ")
+            # print("\n     ]")
+        print("-" * 30)
 
     @ti.kernel
     def add_collision_constraints(self):

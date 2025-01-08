@@ -594,6 +594,7 @@ class RigidEntity(Entity):
         parent_idx,
         invweight,
     ):
+        print(f"Link #{self.n_links + self._link_start} ({name})")
         link = RigidLink(
             entity=self,
             name=name,
@@ -640,7 +641,7 @@ class RigidEntity(Entity):
         dofs_force_range,
         init_qpos,
     ):
-        print(f"Joint {name} has init_qpos: {self.n_dofs + self._dof_start}")
+        print(f"Joint #{self.n_joints + self._joint_start} ({name}) has init_qpos: {self.n_dofs + self._dof_start}")
         joint = RigidJoint(
             entity=self,
             name=name,

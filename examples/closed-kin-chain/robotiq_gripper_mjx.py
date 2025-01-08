@@ -62,15 +62,22 @@ def main():
             mj.mj_id2name(mj_model, mj.mjtObj.mjOBJ_BODY, id2),
         )
         mj.mj_step(mj_model, mj_data)
-        mj.mj_jacBody(mj_model, mj_data, jacp1, jacr1, id1)
-        mj.mj_jacBody(mj_model, mj_data, jacp2, jacr2, id2)
+        anchor1 = mj_data.xmat[id1].reshape(3, 3) @ mj_model.eq_data[i, :3] + mj_data.xpos[id1]
+        anchor2 = mj_data.xmat[id2].reshape(3, 3) @ mj_model.eq_data[i, 3:6] + mj_data.xpos[id2]
+        mj.mj_jac(mj_model, mj_data, jacp1, jacr1, anchor1, id1)
+        mj.mj_jac(mj_model, mj_data, jacp2, jacr2, anchor2, id2)
         with np.printoptions(suppress=True, linewidth=500):
-            print("b1")
+            print("Body 1")
+            print(f"Anchor: {anchor1}")
             print(jacp1)
-            print("b2")
+            print(jacr1)
+            print("Body 2")
+            print(f"Anchor: {anchor2}")
             print(jacp2)
-        print("-" * 100)
-    print("genesis:")
+            print(jacr2)
+        print("-" * 20)
+    print("=" * 100)
+    print("Genesis:")
     scene.step()
 
 

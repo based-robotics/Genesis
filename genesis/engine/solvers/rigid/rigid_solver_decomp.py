@@ -2927,7 +2927,7 @@ class RigidSolver(Solver):
     def _func_link_jac(self, tensor: ti.template(), link_idx: int, batch_idx: int):
         dof_start = self.entities_info[self.links_info[link_idx].entity_idx].dof_start
         link_pos = self.links_state[link_idx, batch_idx].pos
-        i_l = link_idx  # self.links_info[link_idx].parent_idx
+        i_l = link_idx
         while i_l > -1:
             l_info = self.links_info[i_l]
             l_state = self.links_state[i_l, batch_idx]
@@ -2962,7 +2962,7 @@ class RigidSolver(Solver):
                     i_d = l_info.dof_start + i_d_
                     i_d_jac = i_d - dof_start
 
-                    tensor[i_d_, i_d_jac] = 0.0
+                    tensor[i_d_, i_d_jac] = 1.0
 
                 # rotation
                 for i_d_ in range(3):
@@ -2982,7 +2982,7 @@ class RigidSolver(Solver):
 
     @ti.func
     def _func_compute_link_jac(self):
-        ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.NEVER)
+        ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.PARTIAL)
         for i_eq, i_b in ti.ndrange(self.n_eqs, self._B):
             eq_info = self.eqs_info[i_eq]
 

@@ -43,7 +43,7 @@ def main():
     gripper: gsen.RigidEntity = scene.add_entity(
         morph=gs.morphs.MJCF(
             file="mujoco_menagerie/robotiq_2f85_v4/2f85.xml",
-            pos=(0.0, 0, 0.02),
+            pos=(0.0, 0, 0.0),
         ),
     )
 
@@ -56,7 +56,7 @@ def main():
     j2_id = gripper.get_joint("right_driver_joint").dof_start
 
     for i in range(100000000000):
-        gripper.control_dofs_force(np.array([-np.sin(i / 20) * 30, np.sin(i / 20) * 30]), [j1_id, j2_id])
+        gripper.control_dofs_force(np.array([np.sin(i / 20) * 30, np.sin(i / 20) * 30]), [j1_id, j2_id])
         scene.step()
 
 

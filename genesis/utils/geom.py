@@ -326,6 +326,11 @@ def imp_aref(params, pos_aref, vel, pos):
 
 
 @ti.func
+def skew_symmetric(v):
+    return ti.Matrix([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
+
+
+@ti.func
 def closest_segment_point(a, b, pt):
     ab = b - a
     t = (pt - a).dot(ab) / (ab.dot(ab) + 1e-6)
