@@ -181,6 +181,7 @@ class ConstraintSolver:
                             self.jac[n_con, i_d, i_b] = j[i_xyz, i_d]
                 print(f"    Anchor1: {pos1}")
                 print(f"    Anchor2: {pos2}")
+                print(f"    Error: {pos}")
             n_con = self.n_constraints[i_b]
             # print("     Diag=[", end="")
             # for i_xyz in range(3):

@@ -1,0 +1,68 @@
+<mujoco model="four_bar_linkage">
+    <compiler angle="radian"/>
+
+    <default>
+        <joint damping="0.1"/>
+        <geom type="capsule" size="0.02" rgba=".8 .6 .4 1"/>
+    </default>
+
+    <!-- Disable all collisions -->
+    <contact>
+        <exclude body1="base1" body2="link1"/>
+        <exclude body1="base1" body2="link2"/>
+        <exclude body1="base2" body2="link3"/>
+        <exclude body1="link1" body2="link2"/>
+        <exclude body1="link1" body2="link3"/>
+        <exclude body1="link2" body2="link3"/>
+    </contact>
+
+    <asset>
+        <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="3072"/>
+        <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3"
+            markrgb="0.8 0.8 0.8" width="300" height="300"/>
+        <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.2"/>
+    </asset>
+
+    <worldbody>
+        <light diffuse=".5 .5 .5" pos="0 0 3" dir="0 0 -1"/>
+        <geom type="plane" size="5 5 0.1" material="groundplane"/>
+        
+        <!-- Two-link pendulum -->
+        <body name="base1" pos="0 0 1.0">
+            <geom type="cylinder" size="0.05 0.05" rgba="0.5 0.5 0.5 1"/>
+            
+            <body name="link1" pos="0 0 0" euler="0 1.5708 0">
+                <joint name="joint1" type="hinge" axis="0 1 0"/>
+                <geom fromto="0 0 0 0.6 0 0" rgba=".8 .3 .3 1"/>
+                
+                <body name="link2" pos="0.6 0 0" euler="0 -1.5708 0">
+                    <joint name="joint2" type="hinge" axis="0 1 0"/>
+                    <geom fromto="0 0 0 0.6 0 0" rgba=".3 .8 .3 1"/>
+                    <site name="endpoint1" pos="0.6 0 0" size="0.02"/>
+                </body>
+            </body>
+        </body>
+
+        <!-- Single-link pendulum -->
+        <body name="base2" pos="0.6 0 1.0">
+            <geom type="cylinder" size="0.05 0.05" rgba="0.5 0.5 0.5 1"/>
+            
+            <body name="link3" pos="0 0 0" euler="0 1.5708 0">
+                <joint name="joint3" type="hinge" axis="0 1 0"/>
+                <geom fromto="0 0 0 0.6 0 0" rgba=".3 .3 .8 1"/>
+                <site name="endpoint2" pos="0.6 0 0" size="0.02"/>
+            </body>
+        </body>
+    </worldbody>
+
+    <equality>
+        <!-- Connect the endpoints using connect constraint -->
+        <connect body1="link2" body2="link3" anchor="0.6 0 0"/>
+    </equality>
+
+    <actuator>
+        <motor joint="joint1" name="motor1" gear="1" ctrlrange="-100 100"/>
+        <motor joint="joint3" name="motor2" gear="1" ctrlrange="-100 100"/>
+    </actuator>
+
+</mujoco>
