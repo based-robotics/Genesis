@@ -504,7 +504,8 @@ class RigidEntity(Entity):
                     data=g_info["data"],
                     needs_coup=self.material.needs_coup,
                 )
-            if not g_info["is_col"] and morph.visualization:
+            # TODO: why geom is either collision, or visual? Why couldn't it be both?
+            if morph.visualization:
                 link._add_vgeom(
                     vmesh=g_info["mesh"],
                     init_pos=g_info["pos"],
