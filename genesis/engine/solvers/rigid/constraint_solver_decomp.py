@@ -129,18 +129,6 @@ class ConstraintSolver:
                 jac_b1[:3, :] = jac_b1[:3, :] + gu.skew_symmetric(R_b1 @ anchor1).transpose() @ jac_b1[3:, :]
                 jac_b2[:3, :] = jac_b2[:3, :] + gu.skew_symmetric(R_b2 @ anchor2).transpose() @ jac_b2[3:, :]
 
-                print("     Jac1=[", end="")
-                for i_xyz in range(3):
-                    print("\n       ", end="")
-                    for i_d in range(self._solver.n_dofs):
-                        print(f"{jac_b1[i_xyz, i_d]}", end=" ")
-                print("\n     ]")
-                print("     Jac2=[", end="")
-                for i_xyz in range(3):
-                    print("\n       ", end="")
-                    for i_d in range(self._solver.n_dofs):
-                        print(f"{jac_b2[i_xyz, i_d]}", end=" ")
-                print("\n     ]")
                 j = jac_b1 - jac_b2
 
                 invweight = self._solver.links_info[link1_id].invweight + self._solver.links_info[link2_id].invweight
@@ -183,28 +171,28 @@ class ConstraintSolver:
                 print(f"    Anchor2: {pos2}")
                 print(f"    Error: {pos}")
             n_con = self.n_constraints[i_b]
-            # print("     Diag=[", end="")
-            # for i_xyz in range(3):
-            #     idx = n_con - 3 + i_xyz
-            #     print(f"{self.diag[idx, 0]}", end=" ")
-            # print("]")
-            # print("     aref=[", end="")
-            # for i_xyz in range(3):
-            #     idx = n_con - 3 + i_xyz
-            #     print(f"{self.aref[idx, 0]}", end=" ")
-            # print("]")
-            # print("     efc_D=[", end="")
-            # for i_xyz in range(3):
-            #     idx = n_con - 3 + i_xyz
-            #     print(f"{self.efc_D[idx, 0]}", end=" ")
-            # print("]")
-            # print("     Jac1=[", end="")
-            # for i_xyz in range(3):
-            #     print("\n       ", end="")
-            #     idx = n_con - 3 + i_xyz
-            #     for i_d in range(self._solver.n_dofs):
-            #         print(f"{self.jac[idx, i_d, 0]}", end=" ")
-            # print("\n     ]")
+            print("     Diag=[", end="")
+            for i_xyz in range(3):
+                idx = n_con - 3 + i_xyz
+                print(f"{self.diag[idx, 0]}", end=" ")
+            print("]")
+            print("     Aref=[", end="")
+            for i_xyz in range(3):
+                idx = n_con - 3 + i_xyz
+                print(f"{self.aref[idx, 0]}", end=" ")
+            print("]")
+            print("     Efc_D=[", end="")
+            for i_xyz in range(3):
+                idx = n_con - 3 + i_xyz
+                print(f"{self.efc_D[idx, 0]}", end=" ")
+            print("]")
+            print("     Jac=[", end="")
+            for i_xyz in range(3):
+                print("\n       ", end="")
+                idx = n_con - 3 + i_xyz
+                for i_d in range(self._solver.n_dofs):
+                    print(f"{self.jac[idx, i_d, 0]}", end=" ")
+            print("\n     ]")
         print("-" * 30)
 
     @ti.kernel
