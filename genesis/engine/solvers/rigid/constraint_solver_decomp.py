@@ -103,7 +103,7 @@ class ConstraintSolver:
         ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.ALL)
         for i_eq, i_b in ti.ndrange(self._solver.n_eqs, self._B):
             eq_info = self._solver.eqs_info[i_eq]
-            print(f"Constraint #{i_eq}")
+            # print(f"Constraint #{i_eq}")
 
             if eq_info.type == gs.EQ_TYPE.CONNECT:
                 # Extract data and IDs
@@ -118,7 +118,6 @@ class ConstraintSolver:
                 R_b2 = gu.ti_quat_to_R(self._solver.links_state[link2_id, i_b].quat)
                 pos1 = R_b1 @ anchor1 + p_b1
                 pos2 = R_b2 @ anchor2 + p_b2
-
                 # Error is difference in global positions
                 pos = pos1 - pos2
 
@@ -142,8 +141,9 @@ class ConstraintSolver:
                     n_con = ti.atomic_add(self.n_constraints[i_b], 1)
 
                     # Calculate impedance parameters using gu.imp_aref
+                    print(f"    Equality constraint #{i_xyz}:")
                     imp, aref = gu.imp_aref(eq_info.sol_params, pos[i_xyz], jac_qvel, pos.norm())
-                    diag = invweight * (1.0 - imp) / (imp + gs.EPS)
+                    diag = invweight * (1.0 - imp) / ti.max(imp, gs.EPS)
 
                     # Store constraint data
                     self.diag[n_con, i_b] = diag
@@ -167,9 +167,8 @@ class ConstraintSolver:
                     else:
                         for i_d in range(self._solver.n_dofs):
                             self.jac[n_con, i_d, i_b] = j[i_xyz, i_d]
-                print(f"    Anchor1: {pos1}")
-                print(f"    Anchor2: {pos2}")
-                print(f"    Error: {pos}")
+                print(f"     Error: {pos}")
+                print(f"     Error norm: {pos.norm()}")
             n_con = self.n_constraints[i_b]
             print("     Diag=[", end="")
             for i_xyz in range(3):
