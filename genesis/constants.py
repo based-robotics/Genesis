@@ -123,3 +123,8 @@ class PARA_LEVEL(IntEnum):
     NEVER = 0  # when using cpu
     PARTIAL = 1  # when using gpu for non-batched scene
     ALL = 2  # when using gpu for batched scene
+
+class EQ_TYPE(IntEnum):
+    CONNECT = 0
+    WELD = 1
+    JOINT = 2

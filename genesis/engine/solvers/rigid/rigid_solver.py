@@ -513,6 +513,56 @@ class RigidSolver(Solver):
             if ti.static(self._use_hibernation):
                 self.n_awake_links[b] = self.n_links
 
+    def _init_eq_fields(self):
+        struct_eq_info = ti.types.struct(
+            type=gs.ti_int,
+            link1_id=gs.ti_int,
+            link2_id=gs.ti_int,
+            solref=gs.ti_float,
+            solimp=gs.ti_float,
+            data=ti.types.vector(11, gs.ti_float),  # FIXME: 11 is a magic number
+        )
+        struct_eq_state = ti.types.struct(
+            link1_jac=ti.types.matrix(6, self.n_dofs, dtype=gs.ti_float),
+            link2_jac=ti.types.matrix(6, self.n_dofs, dtype=gs.ti_float),
+        )
+
+        self.eqs_info = struct_eq_info.field(shape=self.n_eqs, needs_grad=False, layout=ti.Layout.SOA)
+        self.eqs_state = struct_eq_state.field(
+            shape=self._batch_shape(self.n_links),
+            needs_grad=False,
+            layout=ti.Layout.SOA,
+        )
+        self._kernel_init_eq_fields(
+            eq_type=np.array([eq.type.value for eq in self.eqs], dtype=gs.np_int),
+            eq_link1_id=np.array([eq.obj1_id for eq in self.eqs], dtype=gs.np_int),
+            eq_link2_id=np.array([eq.obj2_id for eq in self.eqs], dtype=gs.np_int),
+            eq_solref=np.array([eq.solref for eq in self.eqs], dtype=gs.np_float),
+            eq_solimp=np.array([eq.solimp for eq in self.eqs], dtype=gs.np_float),
+            eq_data=np.array([eq.data for eq in self.eqs], dtype=gs.np_float),
+        )
+
+    @ti.kernel
+    def _kernel_init_eq_fields(
+        self,
+        eq_type: ti.types.ndarray(),
+        eq_link1_id: ti.types.ndarray(),
+        eq_link2_id: ti.types.ndarray(),
+        eq_solref: ti.types.ndarray(),
+        eq_solimp: ti.types.ndarray(),
+        eq_data: ti.types.ndarray(),
+    ):
+        ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.PARTIAL)
+        for i in range(self.n_eqs):
+            self.eqs_info[i].eq_type = eq_type[i]
+            self.eqs_info[i].link1_id = eq_link1_id[i]
+            self.eqs_info[i].link2_id = eq_link2_id[i]
+            self.eqs_info[i].solref = eq_solref[i]
+            self.eqs_info[i].solimp = eq_solimp[i]
+
+            for j in ti.static(range(11)):  # FIXME: magic number
+                self.links_info[i].data[j] = eq_data[i, j]
+
     def _init_vert_fields(self):
         # collisioin geom
         struct_vert_info = ti.types.struct(

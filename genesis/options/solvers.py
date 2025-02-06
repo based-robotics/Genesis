@@ -181,6 +181,7 @@ class RigidOptions(Options):
     enable_collision: bool = True
     enable_joint_limit: bool = True
     enable_self_collision: bool = False
+    enable_equality: bool = True
     max_collision_pairs: int = 100
     integrator: gs.integrator = gs.integrator.approximate_implicitfast
     IK_max_targets: int = 6

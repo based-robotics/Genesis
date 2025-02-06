@@ -14,6 +14,7 @@ from genesis.utils.misc import tensor_to_array
 from ..base_entity import Entity
 from .rigid_joint import RigidJoint
 from .rigid_link import RigidLink
+from .rigid_equality import RigidEquality
 
 
 @ti.data_oriented
@@ -70,6 +71,7 @@ class RigidEntity(Entity):
     def _load_model(self):
         self._links = gs.List()
         self._joints = gs.List()
+        self._equalities = gs.List()
 
         if isinstance(self._morph, gs.morphs.Mesh):
             self._load_mesh(self._morph, self._surface)
@@ -108,7 +110,6 @@ class RigidEntity(Entity):
             n_qs = 0
             n_dofs = 0
             init_qpos = np.zeros(0)
-
         else:
             joint_type = gs.JOINT_TYPE.FREE
             n_qs = 7
@@ -178,6 +179,7 @@ class RigidEntity(Entity):
             init_qpos=init_qpos,
         )
 
+
         # contains one visual geom (vgeom) and one collision geom (geom)
         if morph.visualization:
             link._add_vgeom(
@@ -203,12 +205,12 @@ class RigidEntity(Entity):
             n_qs = 0
             n_dofs = 0
             init_qpos = np.zeros(0)
-
         else:
             joint_type = gs.JOINT_TYPE.FREE
             n_qs = 7
             n_dofs = 6
             init_qpos = np.concatenate([morph.pos, morph.quat])
+
         link_name = morph.file.split("/")[-1].replace(".", "_")
 
         link = self._add_link(
@@ -242,6 +244,7 @@ class RigidEntity(Entity):
             dofs_force_range=gu.default_dofs_force_range(n_dofs),
             init_qpos=init_qpos,
         )
+
 
         vmeshes, meshes = mu.parse_visual_and_col_mesh(morph, surface)
 
@@ -323,6 +326,7 @@ class RigidEntity(Entity):
         mj = mju.parse_mjcf(morph.file)
         n_geoms = mj.ngeom
         n_links = mj.nbody - 1  # link 0 in mj is world
+        n_eqs = mj.neq
 
         links_g_info = [list() for _ in range(n_links)]
         world_g_info = []
@@ -346,19 +350,28 @@ class RigidEntity(Entity):
 
         l_infos = []
         j_infos = []
+        eq_infos = []
 
         q_offset, dof_offset = 0, 0
 
         for i_l in range(n_links):
             l_info, j_info = mju.parse_link(mj, i_l + 1, q_offset, dof_offset, morph.scale)
-
             l_infos.append(l_info)
             j_infos.append(j_info)
-
             q_offset += j_info["n_qs"]
             dof_offset += j_info["n_dofs"]
 
-        l_infos, j_infos, links_g_info = uu._order_links(l_infos, j_infos, links_g_info)
+        # Parse equality constraints from MuJoCo model
+        for i_eq in range(n_eqs):
+            eq_info = mju.parse_constraints(mj, i_eq)
+            if eq_info is not None:  # Make sure we got valid constraint info
+                # Add default solver parameters if not present
+                if "sol_params" not in eq_info:
+                    eq_info["sol_params"] = gu.default_solver_params(n=1)  # 1-DOF constraint by default
+                eq_infos.append(eq_info)
+        l_infos, j_infos, eq_infos, links_g_info = uu._order_links(l_infos, j_infos, eq_infos, links_g_info)
+
+        # Add links and joints
         for i_l in range(len(l_infos)):
             l_info = l_infos[i_l]
             j_info = j_infos[i_l]
@@ -376,6 +389,18 @@ class RigidEntity(Entity):
                     j_info["init_qpos"] = np.concatenate([l_info["pos"], l_info["quat"]])
 
             self._add_by_info(l_info, j_info, links_g_info[i_l], morph, surface)
+
+        # Add equality constraints
+        for eq_info in eq_infos:
+            self._add_equality(
+                name=eq_info["name"],
+                type=eq_info["type"],
+                data=eq_info["data"],
+                link1_id=eq_info["link1id"],
+                link2_id=eq_info["link2id"],
+                sol_params=eq_info["sol_params"],
+                active0=eq_info.get("active0", True),  # Default to active if not specified
+            )
 
         if world_g_info:
             l_world_info, j_world_info = mju.parse_link(mj, 0, q_offset, dof_offset, morph.scale)
@@ -450,7 +475,8 @@ class RigidEntity(Entity):
                     data=g_info["data"],
                     needs_coup=self.material.needs_coup,
                 )
-            if not g_info["is_col"] and morph.visualization:
+            # TODO: why geom is either collision, or visual? Why couldn't it be both?
+            if morph.visualization:
                 link._add_vgeom(
                     vmesh=g_info["mesh"],
                     init_pos=g_info["pos"],
@@ -463,6 +489,7 @@ class RigidEntity(Entity):
             link._build()
 
         self._n_qs = self.n_qs
+        self._n_eqs = self.n_eqs
         self._n_dofs = self.n_dofs
         self._is_built = True
 
@@ -539,6 +566,7 @@ class RigidEntity(Entity):
         parent_idx,
         invweight,
     ):
+        print(f"Link #{self.n_links + self._link_start} ({name})")
         link = RigidLink(
             entity=self,
             name=name,
@@ -585,6 +613,7 @@ class RigidEntity(Entity):
         dofs_force_range,
         init_qpos,
     ):
+        print(f"Joint #{self.n_joints + self._joint_start} ({name}) has init_qpos: {self.n_dofs + self._dof_start}")
         joint = RigidJoint(
             entity=self,
             name=name,
@@ -611,6 +640,50 @@ class RigidEntity(Entity):
         )
         self._joints.append(joint)
         return joint
+
+    def _add_equality(
+        self,
+        name,
+        type,
+        data,
+        link1_id,
+        link2_id,
+        sol_params,
+        active0=True,
+    ):
+        """Add an equality constraint between links
+
+        Parameters
+        ----------
+        name : str
+            Name of the constraint
+        type : EQ_TYPE
+            Type of constraint (CONNECT, WELD, or JOINT)
+        data : array_like
+            Constraint-specific data
+        link1_id : int
+            ID of first link (global ID within entity)
+        link2_id : int
+            ID of second link (global ID within entity)
+        sol_params : array_like
+            Solver parameters for impedance calculation
+        active0 : bool, optional
+            Whether constraint starts active, by default True
+        """
+        equality = RigidEquality(
+            entity=self,
+            active0=active0,
+            data=data,
+            id=self.n_eqs,
+            name=name,
+            link1id=link1_id + self._link_start,
+            link2id=link2_id + self._link_start,
+            sol_params=sol_params,
+            _type=type,
+        )
+
+        self._equalities.append(equality)
+        return equality
 
     # ------------------------------------------------------------------------------------
     # --------------------------------- Jacobian & IK ------------------------------------
@@ -1988,7 +2061,7 @@ class RigidEntity(Entity):
         envs_idx : None | array_like, optional
             The indices of the environments. If None, all environments will be considered. Defaults to None.
         """
-
+        print(self._get_dofs_idx(dofs_idx_local))
         self._solver.control_dofs_position(position, self._get_dofs_idx(dofs_idx_local), envs_idx)
 
     @gs.assert_built
@@ -2470,12 +2543,22 @@ class RigidEntity(Entity):
         return len(self._joints)
 
     @property
+    def n_eqs(self):
+        """The number of equality constraints in the entity."""
+        return len(self._equalities)
+
+    @property
     def n_dofs(self):
         """The number of degrees of freedom (DOFs) of the entity."""
         if self._is_built:
             return self._n_dofs
         else:
             return sum([joint.n_dofs for joint in self._joints])
+
+    @property
+    def n_eq_dofs(self):
+        """The number of degrees of freedom (DOFs) reduced by equality constraints."""
+        return sum([eq.dim for eq in self._equalities])
 
     @property
     def n_geoms(self):
@@ -2643,3 +2726,8 @@ class RigidEntity(Entity):
     def base_joint(self):
         """The base joint of the entity"""
         return self._joints[0]
+
+    @property
+    def equalities(self):
+        """The list of equality constraints in the entity."""
+        return self._equalities

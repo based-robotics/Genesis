@@ -27,6 +27,7 @@ class RigidSolver(Solver):
         self._enable_collision = options.enable_collision
         self._enable_joint_limit = options.enable_joint_limit
         self._enable_self_collision = options.enable_self_collision
+        self._enable_equality = options.enable_equality  # Add equality flag
         self._max_collision_pairs = options.max_collision_pairs
         self._integrator = options.integrator
         self._box_box_detection = options.box_box_detection
@@ -108,6 +109,8 @@ class RigidSolver(Solver):
         self._n_vfaces = self.n_vfaces
         self._n_vverts = self.n_vverts
         self._n_entities = self.n_entities
+        self._n_eqs = self.n_eqs  # Add equality constraints count_eqs
+        self._n_eq_dofs = self.n_eq_dofs  # Add equality DOFs count
 
         self._geoms = self.geoms
         self._vgeoms = self.vgeoms
@@ -128,6 +131,8 @@ class RigidSolver(Solver):
         self.n_vfaces_ = max(1, self.n_vfaces)
         self.n_vverts_ = max(1, self.n_vverts)
         self.n_entities_ = max(1, self.n_entities)
+        self.n_eqs_ = max(1, self.n_eqs)  # Add equality dummy field
+        self.n_eq_dofs_ = max(1, self.n_eq_dofs)  # Add equality DOFs dummy field
 
         if self.is_active():
             self._init_mass_mat()
@@ -138,6 +143,7 @@ class RigidSolver(Solver):
             self._init_vgeom_fields()
             self._init_link_fields()
             self._init_entity_fields()
+            self._init_eq_fields()  # Add equality fields initialization
 
             self._init_envs_offset()
             self._init_sdf()
@@ -568,6 +574,53 @@ class RigidSolver(Solver):
             ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.PARTIAL)
             for b in range(self._B):
                 self.n_awake_links[b] = self.n_links
+
+    def _init_eq_fields(self):
+        struct_eq_info = ti.types.struct(
+            type=gs.ti_int,
+            link1_id=gs.ti_int,
+            link2_id=gs.ti_int,
+            sol_params=ti.types.vector(7, gs.ti_float),
+            data=ti.types.vector(11, gs.ti_float),  # FIXME: 11 is a magic number
+        )
+        struct_eq_state = ti.types.struct(
+            link1_jac=ti.types.matrix(6, self.n_dofs, dtype=gs.ti_float),
+            link2_jac=ti.types.matrix(6, self.n_dofs, dtype=gs.ti_float),
+        )
+
+        self.eqs_info = struct_eq_info.field(shape=self.n_eqs_, needs_grad=False, layout=ti.Layout.SOA)
+        self.eqs_state = struct_eq_state.field(
+            shape=self._batch_shape(self.n_eqs_),
+            needs_grad=False,
+            layout=ti.Layout.SOA,
+        )
+        self._kernel_init_eq_fields(
+            eq_type=np.array([eq.type.value for eq in self.eqs], dtype=gs.np_int),
+            eq_link1_id=np.array([eq.link1id for eq in self.eqs], dtype=gs.np_int),
+            eq_link2_id=np.array([eq.link2id for eq in self.eqs], dtype=gs.np_int),
+            eq_sol_params=np.array([eq.sol_params for eq in self.eqs], dtype=gs.np_float),
+            eq_data=np.array([eq.data for eq in self.eqs], dtype=gs.np_float),
+        )
+
+    @ti.kernel
+    def _kernel_init_eq_fields(
+        self,
+        eq_type: ti.types.ndarray(),
+        eq_link1_id: ti.types.ndarray(),
+        eq_link2_id: ti.types.ndarray(),
+        eq_sol_params: ti.types.ndarray(),
+        eq_data: ti.types.ndarray(),
+    ):
+        ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.PARTIAL)
+        for i in ti.static(range(self.n_eqs)):
+            self.eqs_info[i].type = eq_type[i]
+            self.eqs_info[i].link1_id = eq_link1_id[i]
+            self.eqs_info[i].link2_id = eq_link2_id[i]
+
+            for j in ti.static(range(11)):  # FIXME: magic number
+                self.eqs_info[i].data[j] = eq_data[i, j]
+            for j in ti.static(range(7)):  # FIXME: magic number
+                self.eqs_info[i].sol_params[j] = eq_sol_params[i, j]
 
     def _init_vert_fields(self):
         # collisioin geom
@@ -1024,7 +1077,6 @@ class RigidSolver(Solver):
         self.collider = Collider(self)
 
         if self.collider._has_terrain:
-
             links_idx = self.geoms_info.link_idx.to_numpy()[self.geoms_info.type.to_numpy() == gs.GEOM_TYPE.TERRAIN]
             entity = self._entities[self.links_info.entity_idx.to_numpy()[links_idx[0]]]
 
@@ -1366,6 +1418,7 @@ class RigidSolver(Solver):
         self._func_bias_force()
         self._func_compute_qacc()
         self._func_clear_external_force()
+        self._func_compute_link_jac()
 
     def substep(self):
         from genesis.utils.tools import create_timer
@@ -1693,7 +1746,6 @@ class RigidSolver(Solver):
             ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.ALL)
             for i_b in range(self._B):
                 for i_l in range(self.n_links):
-
                     self.links_state[i_l, i_b].root_COM = ti.Vector.zero(gs.ti_float, 3)
                     self.links_state[i_l, i_b].mass_sum = 0.0
 
@@ -1887,7 +1939,6 @@ class RigidSolver(Solver):
         else:
             ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.PARTIAL)
             for i_e, i_b in ti.ndrange(self.n_entities, self._B):
-
                 e_info = self.entities_info[i_e]
                 for i_l in range(e_info.link_start, e_info.link_end):
                     I_l = [i_l, i_b] if ti.static(self._options.batch_links_info) else i_l
@@ -2028,7 +2079,6 @@ class RigidSolver(Solver):
             l_info = self.links_info[I_l]
 
             if l_info.joint_type == gs.JOINT_TYPE.FREE:
-
                 for i_q in ti.static(range(3)):
                     self.links_state[i_l, i_b].j_pos[i_q] = self.qpos[i_q + l_info.q_start, i_b]
                     self.links_state[i_l, i_b].j_ang[i_q] = self.dofs_state[i_q + 3 + l_info.dof_start, i_b].vel
@@ -2152,7 +2202,6 @@ class RigidSolver(Solver):
         else:
             ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.PARTIAL)
             for i_g, i_b in ti.ndrange(self.n_geoms, self._B):
-
                 g_info = self.geoms_info[i_g]
 
                 l_state = self.links_state[g_info.link_idx, i_b]
@@ -2254,12 +2303,12 @@ class RigidSolver(Solver):
                 else:
                     # update collider sort_buffer
                     for i_g in range(self.entities_info[i_e].geom_start, self.entities_info[i_e].geom_end):
-                        self.collider.sort_buffer[self.geoms_state[i_g, i_b].min_buffer_idx, i_b].value = (
-                            self.geoms_state[i_g, i_b].aabb_min[0]
-                        )
-                        self.collider.sort_buffer[self.geoms_state[i_g, i_b].max_buffer_idx, i_b].value = (
-                            self.geoms_state[i_g, i_b].aabb_max[0]
-                        )
+                        self.collider.sort_buffer[
+                            self.geoms_state[i_g, i_b].min_buffer_idx, i_b
+                        ].value = self.geoms_state[i_g, i_b].aabb_min[0]
+                        self.collider.sort_buffer[
+                            self.geoms_state[i_g, i_b].max_buffer_idx, i_b
+                        ].value = self.geoms_state[i_g, i_b].aabb_max[0]
 
     @ti.func
     def _func_aggregate_awake_entities(self):
@@ -2301,7 +2350,6 @@ class RigidSolver(Solver):
     @ti.func
     def _func_wakeup_entity(self, i_e, i_b):
         if self.entities_state[i_e, i_b].hibernated:
-
             self.entities_state[i_e, i_b].hibernated = False
             n_awake_entities = ti.atomic_add(self.n_awake_entities[i_b], 1)
             self.awake_entities[n_awake_entities, i_b] = i_e
@@ -2449,7 +2497,6 @@ class RigidSolver(Solver):
                     or self.dofs_state[ds + 4, i_b].ctrl_mode == gs.CTRL_MODE.POSITION
                     or self.dofs_state[ds + 5, i_b].ctrl_mode == gs.CTRL_MODE.POSITION
                 ):
-
                     xyz = ti.Vector(
                         [
                             self.dofs_state[0 + 3 + l_info.dof_start, i_b].pos,
@@ -3012,6 +3059,75 @@ class RigidSolver(Solver):
                             self.dofs_info[I_d].limit[1],
                         )
 
+    @ti.func
+    def _func_link_jac(self, tensor: ti.template(), link_idx: int, batch_idx: int):
+        dof_start = self.entities_info[self.links_info[link_idx].entity_idx].dof_start
+        link_pos = self.links_state[link_idx, batch_idx].pos
+        i_l = link_idx
+        while i_l > -1:
+            l_info = self.links_info[i_l]
+            l_state = self.links_state[i_l, batch_idx]
+
+            if l_info.joint_type == gs.JOINT_TYPE.FIXED:
+                pass
+
+            elif l_info.joint_type == gs.JOINT_TYPE.REVOLUTE:
+                i_d = l_info.dof_start
+                i_d_jac = i_d - dof_start
+                rotation = gu.ti_transform_by_quat(self.dofs_info[i_d].motion_ang, l_state.quat)
+                translation = rotation.cross(link_pos - l_state.pos)
+
+                tensor[0, i_d_jac] = translation[0]
+                tensor[1, i_d_jac] = translation[1]
+                tensor[2, i_d_jac] = translation[2]
+                tensor[3, i_d_jac] = rotation[0]
+                tensor[4, i_d_jac] = rotation[1]
+                tensor[5, i_d_jac] = rotation[2]
+
+            elif l_info.joint_type == gs.JOINT_TYPE.PRISMATIC:
+                i_d = l_info.dof_start
+                i_d_jac = i_d - dof_start
+                translation = gu.ti_transform_by_quat(self.dofs_info[i_d].motion_vel, l_state.quat)
+
+                tensor[0, i_d_jac] = translation[0]
+                tensor[1, i_d_jac] = translation[1]
+                tensor[2, i_d_jac] = translation[2]
+            elif l_info.joint_type == gs.JOINT_TYPE.FREE:
+                # translation
+                for i_d_ in range(3):
+                    i_d = l_info.dof_start + i_d_
+                    i_d_jac = i_d - dof_start
+
+                    tensor[i_d_, i_d_jac] = 1.0
+
+                # rotation
+                for i_d_ in range(3):
+                    i_d = l_info.dof_start + i_d_ + 3
+                    i_d_jac = i_d - dof_start
+                    rotation = self.dofs_info[i_d].motion_ang
+                    translation = rotation.cross(link_pos - l_state.pos)
+
+                    tensor[0, i_d_jac] = translation[0]
+                    tensor[1, i_d_jac] = translation[1]
+                    tensor[2, i_d_jac] = translation[2]
+                    tensor[3, i_d_jac] = rotation[0]
+                    tensor[4, i_d_jac] = rotation[1]
+                    tensor[5, i_d_jac] = rotation[2]
+
+            i_l = l_info.parent_idx
+
+    @ti.func
+    def _func_compute_link_jac(self):
+        ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.PARTIAL)
+        for i_eq, i_b in ti.ndrange(self.n_eqs, self._B):
+            eq_info = self.eqs_info[i_eq]
+
+            if eq_info.type == gs.EQ_TYPE.WELD or eq_info.type == gs.EQ_TYPE.CONNECT:
+                self._func_link_jac(self.eqs_state[i_eq, i_b].link1_jac, eq_info.link1_id, i_b)
+                self._func_link_jac(self.eqs_state[i_eq, i_b].link2_jac, eq_info.link2_id, i_b)
+            else:
+                pass
+
     def substep_pre_coupling(self, f):
         if self.is_active():
             self.substep()
@@ -3303,8 +3419,75 @@ class RigidSolver(Solver):
 
             return tensor, inputs_idx
 
+    def _validate_ND_io_variables(
+        self, tensor, inputs_idx, tensor_size, envs_idx=None, batched=True, idx_name="links_idx"
+    ):
+        inputs_idx = torch.as_tensor(inputs_idx, dtype=gs.tc_int, device=gs.device).contiguous()
+        if inputs_idx.ndim != 1:
+            gs.raise_exception(f"Expecting 1D tensor for `{idx_name}`.")
+
+        if tensor is not None:
+            tensor = torch.as_tensor(tensor, dtype=gs.tc_float, device=gs.device).contiguous()
+            if tensor.shape[-2] != len(inputs_idx):
+                gs.raise_exception(f"Second last dimension of the input tensor does not match length of `{idx_name}`.")
+            if tensor.shape[-1] != tensor_size:
+                gs.raise_exception(f"Last dimension of the input tensor must be {tensor_size}.")
+
+        else:
+            if batched and self.n_envs > 0:
+                tensor = torch.empty(
+                    self._batch_shape((len(inputs_idx), *tensor_size), True), dtype=gs.tc_float, device=gs.device
+                )
+            else:
+                tensor = torch.empty((len(inputs_idx), *tensor_size), dtype=gs.tc_float, device=gs.device)
+
+        if batched:
+            envs_idx = self._get_envs_idx(envs_idx)
+
+            if self.n_envs == 0:
+                if tensor.ndim == len(tensor_size):
+                    tensor = tensor[None, :]
+                else:
+                    gs.raise_exception(
+                        f"Invalid input shape: {tensor.shape}. Expecting a ND tensor for non-parallelized scene."
+                    )
+
+            else:
+                if tensor.ndim == len(tensor_size) + 1:
+                    if tensor.shape[0] != len(envs_idx):
+                        gs.raise_exception(
+                            f"Invalid input shape: {tensor.shape}. First dimension of the input tensor does not match length of `envs_idx` (or `scene.n_envs` if `envs_idx` is None)."
+                        )
+                else:
+                    gs.raise_exception(
+                        f"Invalid input shape: {tensor.shape}. Expecting a (N+1)D tensor for scene with parallelized envs."
+                    )
+
+            return tensor, inputs_idx, envs_idx
+
     def _get_qs_idx(self, qs_idx_local=None):
         return self._get_qs_idx_local(qs_idx_local) + self._q_start
+
+    def get_links_jac(self, links_idx, dof_start, envs_idx=None):
+        tensor, links_idx, envs_idx = self._validate_ND_io_variables(
+            None, links_idx, (6, self.n_dofs), envs_idx, idx_name="links_idx"
+        )
+
+        self._kernel_get_links_jac(tensor, links_idx, dof_start, envs_idx)
+
+        if self.n_envs == 0:
+            tensor = tensor.squeeze(0)
+        return tensor
+
+    @ti.kernel
+    def _kernel_get_links_jac(
+        self,
+        tensor: ti.types.ndarray(),
+        links_idx: ti.types.ndarray(),
+        dof_starts: ti.types.ndarray(),
+        envs_idx: ti.types.ndarray(),
+    ):
+        pass
 
     def set_links_pos(self, pos, links_idx, envs_idx=None):
         """
@@ -3359,7 +3542,6 @@ class RigidSolver(Solver):
         links_idx: ti.types.ndarray(),
         envs_idx: ti.types.ndarray(),
     ):
-
         ti.loop_config(serialize=self._para_level < gs.PARA_LEVEL.PARTIAL)
         for i_l_, i_b_ in ti.ndrange(links_idx.shape[0], envs_idx.shape[0]):
             i_l = links_idx[i_l_]
@@ -4541,6 +4723,16 @@ class RigidSolver(Solver):
             return joints
 
     @property
+    def eqs(self):
+        if self.is_built:
+            return self._eqs
+        else:
+            eqs = gs.List()
+            for entity in self._entities:
+                eqs += entity.equalities
+            return eqs
+
+    @property
     def geoms(self):
         if self.is_built:
             return self._geoms
@@ -4580,6 +4772,13 @@ class RigidSolver(Solver):
             return self._n_geoms
         else:
             return len(self.geoms)
+
+    @property
+    def n_eqs(self):
+        if self.is_built:
+            return self._n_eqs
+        else:
+            return len(self.eqs)
 
     @property
     def n_cells(self):
@@ -4643,6 +4842,13 @@ class RigidSolver(Solver):
             return self._n_dofs
         else:
             return sum([entity.n_dofs for entity in self._entities])
+
+    @property
+    def n_eq_dofs(self):
+        if self.is_built:
+            return self._n_eq_dofs
+        else:
+            return sum([entity.n_eq_dofs for entity in self._entities])
 
     @property
     def init_qpos(self):

@@ -248,6 +248,7 @@ from .constants import (
     JOINT_TYPE,
     GEOM_TYPE,
     CTRL_MODE,
+    EQ_TYPE,
     PARA_LEVEL,
     ACTIVE,
     INACTIVE,
